@@ -8,12 +8,9 @@ const nextConfig: NextConfig = {
   // ─── Security: prevent information leakage ───────────────
   poweredByHeader: false,
 
-  // ─── Strict TypeScript & ESLint during builds ────────────
+  // ─── Strict TypeScript during builds ────────────
   typescript: {
     ignoreBuildErrors: false,
-  },
-  eslint: {
-    ignoreDuringBuilds: false,
   },
 
   // ─── Production image optimisation ───────────────────────
