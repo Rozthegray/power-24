@@ -427,4 +427,3 @@ function InstallersTab({ quote, colors }: { quote: QuoteResult; colors: typeof D
     </div>
   );
 }
-}
