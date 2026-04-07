@@ -399,7 +399,7 @@ function InstallersTab({ quote, colors }: { quote: QuoteResult; colors: typeof D
             <div className="flex-1 min-w-0">
               <h4 className="font-black text-slate-900 text-base">{installer.name}</h4>
               <p className="text-xs text-slate-500 mt-1 font-medium">
-                📍 {installer.location}
+                📍 {installer.city}, {installer.state}
               </p>
               <div className="flex flex-wrap gap-1.5 mt-3">
                 {installer.certifications.map((cert) => (
@@ -413,11 +413,11 @@ function InstallersTab({ quote, colors }: { quote: QuoteResult; colors: typeof D
               <div className={`text-lg font-black ${colors.accent}`}>
                 ★ {installer.rating}
               </div>
-              <div className="text-xs text-slate-400 font-semibold">{installer.reviews} reviews</div>
+              <div className="text-xs text-slate-400 font-semibold">{installer.reviewCount} reviews</div>
             </div>
           </div>
           <a
-            href="tel:0800POWER24"
+            href={`tel:${installer.phone.replace(/\s+/g, '')}`}
             className="mt-4 flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-slate-50 hover:bg-green-50 border border-slate-200 text-sm text-slate-600 hover:text-[#008751] font-bold transition-all"
           >
             📞 Contact Installer
@@ -426,4 +426,5 @@ function InstallersTab({ quote, colors }: { quote: QuoteResult; colors: typeof D
       ))}
     </div>
   );
+}
 }
