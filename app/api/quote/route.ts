@@ -182,13 +182,8 @@ export async function POST(
       );
     }
 
-    // 5. Assemble and return final quote
-    const quote = buildQuoteResult(
-      { description: safeDescription, location, budgetRange },
-      extraction,
-      loadProfile,
-      selectedPackage
-    );
+ // 5. Assemble and return final quote
+    const quote = buildQuoteResult(extraction, location);
 
     return NextResponse.json(quote, {
       status: 200,
@@ -197,21 +192,7 @@ export async function POST(
         "X-RateLimit-Remaining": String(limitResult.remaining),
       },
     });
-  } catch (error) {
-    // Catch-all for truly unexpected errors
-    console.error("[Power 24] Unhandled error in /api/quote:", error);
-    return NextResponse.json(
-      {
-        success: false,
-        error: "An unexpected error occurred. Our team has been notified.",
-        code: "INTERNAL_ERROR",
-        retryable: true,
-      },
-      { status: 500, headers: SECURITY_HEADERS }
-    );
-  }
-}
-
+    
 // ─── Block non-POST methods ───────────────────────────────────
 export async function GET(): Promise<NextResponse> {
   return NextResponse.json(
