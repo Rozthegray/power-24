@@ -158,7 +158,7 @@ export async function POST(
     let selectedPackage;
     try {
       loadProfile = computeLoadProfile(extraction, location);
-      selectedPackage = selectPackage(loadProfile);
+      selectedPackage = selectPackage(loadProfile, extraction.warnings);
 
       // Override: if user specified economy budget, step down one tier if possible
       if (budgetRange === "economy") {
