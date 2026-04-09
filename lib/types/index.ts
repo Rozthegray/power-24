@@ -93,7 +93,6 @@ export interface BatterySpec {
 
 export interface PanelSpec {
   brand: string;
-  model: string;
   model?: string;
   watts: number;
   type: "monocrystalline" | "polycrystalline";
