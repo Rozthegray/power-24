@@ -56,11 +56,7 @@ export interface LoadProfile {
 }
 
 // ─── Package / Tier ─────────────────────────────────────────
-export type TierSlug =
-  | "sapa-lite"
-  | "hustler-plus"
-  | "odogwu-premium"
-  | "oga-boss";
+export type TierSlug = string; // Relaxed to allow all 10 of our new tiers!
 
 export interface SolarPackage {
   slug: TierSlug;
