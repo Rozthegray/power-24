@@ -24,11 +24,30 @@ export function computeLoadProfile(
 ): LoadProfile {
   const loc = location.toLowerCase().trim();
 
-  // 1. Harmattan & Heat Derating (15%-25% loss due to heat and dust)
+  // 1. RECALCULATE LOADS NATIVELY (Never trust LLM math)
+  let trueContinuous = 0;
+  let maxSurgeAddition = 0;
+
+  for (const app of extraction.appliances) {
+    const appTotalWatts = app.unitWatts * app.quantity;
+    trueContinuous += appTotalWatts;
+
+    // If it has a motor/compressor, calculate its surge footprint
+    if (app.hasSurge && app.surgeMultiplier > 1) {
+      const surgeAddition = app.unitWatts * (app.surgeMultiplier - 1); // Only the extra surge watts
+      if (surgeAddition > maxSurgeAddition) {
+        maxSurgeAddition = surgeAddition; // We only care about the single highest surge
+      }
+    }
+  }
+
+  const trueSurge = trueContinuous + maxSurgeAddition;
+
+  // 2. Harmattan & Heat Derating (15%-25% loss due to heat and dust)
   const isNorth = ["kano", "sokoto", "maiduguri", "abuja", "kaduna", "jos", "fct"].some(l => loc.includes(l));
   const environmentDerating = isNorth ? 0.75 : 0.85;
 
-  // 2. Peak Sun Hours Mapping
+  // 3. Peak Sun Hours Mapping
   const pshMap: Record<string, number> = {
     sokoto: 7.0, maiduguri: 6.8, kano: 6.5, abuja: 5.8,
     enugu: 5.1, ibadan: 5.0, owerri: 4.9, lagos: 4.8, "port harcourt": 4.5,
@@ -40,19 +59,16 @@ export function computeLoadProfile(
     if (loc.includes(city)) psh = hours;
   }
 
-  // 3. Core Physics Calculations
-  const bufferedEnergyWh = extraction.estimatedDailyWattHours * 1.30; // 30% System Loss Buffer
+  // 4. Core Physics Calculations
+  const bufferedEnergyWh = extraction.estimatedDailyWattHours * 1.30; 
   const requiredPanelWatts = Math.ceil(bufferedEnergyWh / (psh * environmentDerating));
 
-  // Calculate battery requirements assuming 48V architecture and 80% Depth of Discharge
-  const requiredBatteryAh = Math.ceil((extraction.totalContinuousWatts * 8 * 1.30) / (48 * 0.80));
-
-  // 20% Inverter Headroom
-  const requiredInverterKva = Math.ceil((extraction.totalSurgeWatts * 1.20) / 100) / 10;
+  const requiredBatteryAh = Math.ceil((trueContinuous * 8 * 1.30) / (48 * 0.80));
+  const requiredInverterKva = Math.ceil((trueSurge * 1.20) / 100) / 10;
 
   return {
-    continuousLoad: extraction.totalContinuousWatts,
-    surgeLoad: extraction.totalSurgeWatts,
+    continuousLoad: trueContinuous,
+    surgeLoad: trueSurge,
     dailyEnergyWh: extraction.estimatedDailyWattHours,
     bufferedEnergyWh,
     peakSunHours: psh,
