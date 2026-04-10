@@ -1,6 +1,6 @@
 // ============================================================
 // lib/engine/mapper.ts
-// ─── THE SECRET SAUCE ────────────────────────────────────────
+// ─── THE PHYSICS & SURGE ROUTING ENGINE ──────────────────────
 // Takes raw AI extraction, applies Nigerian solar engineering
 // rules, and returns the optimal package + line-item pricing.
 // ============================================================
@@ -62,22 +62,37 @@ export function computeLoadProfile(
   };
 }
 
-// ─── Step 2: Select Package ───────────────────────────────────
+// ─── Step 2: Select Package (The Surge Router) ────────────────
 
 export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPackage {
   const wantsPortable = warnings.includes("PORTABLE_RECOMMENDED");
+  const surgeRatio = profile.continuousLoad > 0 ? (profile.surgeLoad / profile.continuousLoad) : 1;
 
+  // ─── INDUCTIVE SURGE OVERRIDE ──────────────────────────────
+  // If the surge is more than 2x the continuous load, this is a motor-heavy house (ACs, Pumps).
+  // We MUST route them to heavy-transformer systems (Blue Gate, PRAG, Deye).
+  if (!wantsPortable && surgeRatio > 2.0) {
+    const surgeMonsters = ["bluegate-surge-master", "prag-heavy-duty", "deye-flagship"];
+    for (const slug of surgeMonsters) {
+      const pkg = SOLAR_PACKAGES.find(p => p.slug === slug);
+      if (pkg && profile.continuousLoad <= pkg.maxContinuousWatts && profile.surgeLoad <= pkg.maxSurgeWatts) {
+        return pkg;
+      }
+    }
+  }
+
+  // ─── STANDARD ROUTING ──────────────────────────────────────
   // Sort packages from smallest to largest continuous watts
   const sorted = [...SOLAR_PACKAGES].sort((a, b) => a.maxContinuousWatts - b.maxContinuousWatts);
 
   for (const pkg of sorted) {
-    const isPortablePkg = ["lumos-eco", "lumos-prime", "ecoflow-river-2-max", "itel-power-tank", "ecoflow-delta-2"].includes(pkg.slug);
+    const isPortablePkg = ["lumos-l1", "cola-1000-pro", "ecoflow-river-2-pro", "ecoflow-delta-pro"].includes(pkg.slug);
 
-    // Route to correct architecture
+    // Keep portables out of permanent results, and vice versa
     if (wantsPortable && !isPortablePkg) continue;
     if (!wantsPortable && isPortablePkg) continue;
 
-    // Apply Empirical 0.8 Power Factor Penalty to Budget Inverters (Felicity, Luminous, itel, Lumos)
+    // Apply Empirical 0.8 Power Factor Penalty to Budget Inverters
     const isBudgetInverter = ["Felicity", "Lumos", "itel", "Luminous"].includes(pkg.inverter.brand);
     const actualContinuousLimit = isBudgetInverter
       ? pkg.inverter.kva * 1000 * 0.8
@@ -89,11 +104,11 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
     }
   }
 
-  // Fallbacks if nothing perfectly fits
+  // ─── FALLBACKS ─────────────────────────────────────────────
   if (wantsPortable) {
-    return SOLAR_PACKAGES.find(p => p.slug === "ecoflow-delta-2") || sorted[sorted.length - 1];
+    return SOLAR_PACKAGES.find(p => p.slug === "ecoflow-delta-pro") || sorted[sorted.length - 1];
   }
-  return sorted[sorted.length - 1]; // Oga Boss
+  return sorted[sorted.length - 1]; // Default to Deye Flagship if off the charts
 }
 
 // ─── Step 3: Build Line Items ─────────────────────────────────
