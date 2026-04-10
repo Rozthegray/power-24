@@ -131,7 +131,7 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
 
       {/* ─── Tab Content ────────────────────────────────────── */}
       <div className="p-6 bg-white">
-        {activeTab === "overview" && <OverviewTab quote={quote} colors={colors} formatNGN={formatNGN} />}
+        {activeTab === "overview" && <OverviewTab quote={quote} colors={colors} />}
         {activeTab === "specs" && <SpecsTab quote={quote} colors={colors} />}
         {activeTab === "pricing" && <PricingTab quote={quote} colors={colors} formatNGN={formatNGN} />}
         {activeTab === "installers" && <InstallersTab quote={quote} colors={colors} />}
@@ -192,7 +192,7 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
 }
 
 // ─── Overview Tab ────────────────────────────────────────────
-function OverviewTab({ quote, colors }: { quote: QuoteResult; colors: typeof DEFAULT_COLORS; formatNGN: (n?: number) => string }) {
+function OverviewTab({ quote, colors }: { quote: QuoteResult; colors: typeof DEFAULT_COLORS }) {
   const pkg = quote.selectedPackage!;
   const profile = quote.loadProfile!;
 
@@ -203,15 +203,6 @@ function OverviewTab({ quote, colors }: { quote: QuoteResult; colors: typeof DEF
     { label: "Inverter", value: `${pkg.inverter.kva} KVA`, icon: "🔌" },
     { label: "Panel Array", value: `${pkg.panels.reduce((s, p) => s + p.watts * p.quantity, 0)}W`, icon: "☀" },
     { label: "Warranty", value: `${pkg.warrantyYears} Years`, icon: "🛡" },
-  ];
-
-  // Dynamically build the includes list since it's not in the type
-  const includesList = [
-    `${pkg.inverter.kva}KVA ${pkg.inverter.brand} Hybrid Inverter`,
-    `${pkg.batteries[0].capacityAh}Ah ${pkg.batteries[0].type.toUpperCase()} Battery Backup`,
-    `${pkg.panels[0].watts}W High-Efficiency Solar Panels`,
-    `Professional Installation`,
-    `${pkg.warrantyYears}-Year Maintenance Warranty`
   ];
 
   return (
@@ -231,7 +222,8 @@ function OverviewTab({ quote, colors }: { quote: QuoteResult; colors: typeof DEF
           What's Included
         </h3>
         <ul className="space-y-2.5">
-          {includesList.map((item, i) => (
+          {/* Natively mapped from the package database! No more hardcoding! */}
+          {pkg.includes.map((item, i) => (
             <li key={i} className="flex gap-3 text-sm text-slate-600 font-medium">
               <span className={`shrink-0 mt-0.5 ${colors.accent}`}>✓</span>
               {item}
