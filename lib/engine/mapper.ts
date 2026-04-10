@@ -202,16 +202,19 @@ export function buildQuoteResult(
   if (allText.includes("yohako") || allText.includes("yako")) {
     extraction.warnings.push("CRITICAL WARNING: Yohako batteries have been widely reported as counterfeit (sand-weighted) in Nigeria. Avoid them for your safety.");
   }
+
+  // 1. DECLARE THE PACKAGE FIRST
+  const pkg = selectPackage(profile, extraction.warnings);
+
+  // 2. NOW CHECK IF IT IS AN ECOFLOW
   // Inject EcoFlow X-Boost Warning for heating/smart appliances
   if (pkg.slug.includes("ecoflow-river-2") && profile.surgeLoad > 800) {
     extraction.warnings.push("ECOFLOW X-BOOST WARNING: This unit drops voltage to handle loads above 800W. It is safe for basic kettles and irons, but DO NOT use it on digital/smart appliances (like digital microwaves or smart fridges) as the low voltage can damage their motherboards.");
   }
 
-  const pkg = selectPackage(profile, extraction.warnings);
   const lineItems = buildLineItems(pkg);
 
   const totalPriceNGN = pkg.basePrice + pkg.installationFee;
-  
   // Monthly payment with finance charge (approximate 3% monthly rate over 36 months)
   const r = 0.03;
   const n = 36;
