@@ -92,11 +92,23 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
     const surgeMonsters = ["bluegate-surge-master", "prag-heavy-duty", "deye-flagship"];
     for (const slug of surgeMonsters) {
       const pkg = SOLAR_PACKAGES.find(p => p.slug === slug);
-      // Ensure battery is large enough even for surge monsters
-      const totalBatteryWh = pkg ? pkg.batteries.reduce((sum, b) => sum + (b.capacityAh * b.voltageV * b.quantity), 0) : 0;
+      if (!pkg) continue;
+
+      const totalBatteryWh = pkg.batteries.reduce((sum, b) => sum + (b.capacityAh * b.voltageV * b.quantity), 0);
+      const isLithium = pkg.batteries[0]?.type === "lithium";
+      const usableBatteryWh = totalBatteryWh * (isLithium ? 0.80 : 0.50);
       const minimumBatteryWh = Math.max(profile.continuousLoad * 3, profile.dailyEnergyWh * 0.4);
 
-      if (pkg && profile.continuousLoad <= pkg.maxContinuousWatts && profile.surgeLoad <= pkg.maxSurgeWatts && totalBatteryWh >= minimumBatteryWh) {
+      const totalPanelWatts = pkg.panels.reduce((sum, p) => sum + (p.watts * p.quantity), 0);
+      const dailyGenerationWh = totalPanelWatts * profile.peakSunHours * 0.80;
+      const minimumGenerationWh = profile.dailyEnergyWh * 0.60;
+
+      if (
+        profile.continuousLoad <= pkg.maxContinuousWatts && 
+        profile.surgeLoad <= pkg.maxSurgeWatts && 
+        usableBatteryWh >= minimumBatteryWh &&
+        dailyGenerationWh >= minimumGenerationWh
+      ) {
         return pkg;
       }
     }
@@ -115,19 +127,22 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
       ? pkg.inverter.kva * 1000 * 0.8
       : pkg.maxContinuousWatts;
 
-    // ─── NEW: BATTERY STORAGE REALITY CHECK ──────────────────
-    // Calculate the total Watt-Hours in this package's battery bank
+    // ─── NEW: BATTERY CHEMISTRY & DOD REALITY CHECK ──────────
     const totalBatteryWh = pkg.batteries.reduce((sum, b) => sum + (b.capacityAh * b.voltageV * b.quantity), 0);
-    
-    // The battery MUST be large enough to survive at least 3 hours of the continuous load, 
-    // OR hold at least 40% of the user's total daily energy demand.
+    const isLithium = pkg.batteries[0]?.type === "lithium";
+    const usableBatteryWh = totalBatteryWh * (isLithium ? 0.80 : 0.50);
     const minimumBatteryWh = Math.max(profile.continuousLoad * 3, profile.dailyEnergyWh * 0.4);
 
-    // Check if system can handle the load AND the battery has enough capacity
+    // ─── NEW: SOLAR REPLENISHMENT CHECK ──────────────────────
+    const totalPanelWatts = pkg.panels.reduce((sum, p) => sum + (p.watts * p.quantity), 0);
+    const dailyGenerationWh = totalPanelWatts * profile.peakSunHours * 0.80;
+    const minimumGenerationWh = profile.dailyEnergyWh * 0.60;
+
     if (
       profile.continuousLoad <= actualContinuousLimit && 
       profile.surgeLoad <= pkg.maxSurgeWatts &&
-      totalBatteryWh >= minimumBatteryWh // <-- This prevents the EcoFlow from running 2 fridges!
+      usableBatteryWh >= minimumBatteryWh &&
+      dailyGenerationWh >= minimumGenerationWh
     ) {
       return pkg;
     }
@@ -145,7 +160,6 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
 export function buildLineItems(pkg: SolarPackage): LineItem[] {
   const items: LineItem[] = [];
 
-  // If it's a portable/all-in-one system, no installation fee
   if (pkg.installationFee === 0) {
     items.push({
       description: `${pkg.name} Portable Power Station (${pkg.batteries[0].capacityAh}Ah / ${pkg.inverter.kva * 1000}W)`,
@@ -157,7 +171,6 @@ export function buildLineItems(pkg: SolarPackage): LineItem[] {
     return items;
   }
 
-  // Otherwise, breakdown the permanent installation
   const inverterTotal = pkg.basePrice * 0.4;
   const batteryTotal = pkg.basePrice * 0.4;
   const panelTotal = pkg.basePrice * 0.2;
@@ -207,17 +220,13 @@ export function buildQuoteResult(
 ): QuoteResult {
   const profile = computeLoadProfile(extraction, location);
 
-  // Inject Yohako Scam Warning if mentioned
   const allText = JSON.stringify(extraction.appliances).toLowerCase();
   if (allText.includes("yohako") || allText.includes("yako")) {
     extraction.warnings.push("CRITICAL WARNING: Yohako batteries have been widely reported as counterfeit (sand-weighted) in Nigeria. Avoid them for your safety.");
   }
 
-  // 1. DECLARE THE PACKAGE FIRST
   const pkg = selectPackage(profile, extraction.warnings);
 
-  // 2. NOW CHECK IF IT IS AN ECOFLOW
-  // Inject EcoFlow X-Boost Warning for heating/smart appliances
   if (pkg.slug.includes("ecoflow-river-2") && profile.surgeLoad > 800) {
     extraction.warnings.push("ECOFLOW X-BOOST WARNING: This unit drops voltage to handle loads above 800W. It is safe for basic kettles and irons, but DO NOT use it on digital/smart appliances (like digital microwaves or smart fridges) as the low voltage can damage their motherboards.");
   }
@@ -225,7 +234,6 @@ export function buildQuoteResult(
   const lineItems = buildLineItems(pkg);
 
   const totalPriceNGN = pkg.basePrice + pkg.installationFee;
-  // Monthly payment with finance charge (approximate 3% monthly rate over 36 months)
   const r = 0.03;
   const n = 36;
   const monthlyPaymentOption = Math.ceil((totalPriceNGN * r * Math.pow(1 + r, n)) / (Math.pow(1 + r, n) - 1));
@@ -245,8 +253,8 @@ export function buildQuoteResult(
     totalPriceNGN,
     monthlyPaymentOption,
     warnings: extraction.warnings,
-    confidenceScore: extraction.confidenceScore,
     engineersVerdict: extraction.engineersVerdict,
+    confidenceScore: extraction.confidenceScore,
     recommendedInstallers: installers,
   };
 }
