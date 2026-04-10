@@ -1,152 +1,154 @@
 // ============================================================
 // lib/data/packages.ts
-// The Expanded Power 24 Tiers (Micro-Portables to Industrial)
-// Includes Lumos, EcoFlow, itel, Luminous, Felicity, PRAG, Deye, Victron
+// The Power 24 Tier Matrix
+// Fully integrated with Q2 2026 Nigerian Forensic Market Data
 // ============================================================
 import { SolarPackage } from "@/lib/types";
 
 export const SOLAR_PACKAGES: SolarPackage[] = [
-  // ─── PORTABLE / MICRO-GRID TIERS (NO INSTALLATION FEE) ────────
+  // ─── MICRO-PORTABLES & PAYG ───────────────────────────────
   {
-    slug: "lumos-eco",
-    name: "Lumos Eco",
-    tagline: "Ultra-basic plug-and-play for phones, decoders, and LED lights.",
-    maxContinuousWatts: 80,
-    maxSurgeWatts: 100,
-    inverter: { brand: "Lumos", model: "Eco Base", kva: 0.1, type: "off-grid", efficiency: 90 },
-    batteries: [{ brand: "Lumos", model: "Integrated", type: "lithium", capacityAh: 16, voltageV: 12, quantity: 1, cycleLife: 2000 }],
-    panels: [{ brand: "Lumos", type: "monocrystalline", watts: 80, quantity: 1 }],
-    basePrice: 95000,
-    installationFee: 0,
-    warrantyYears: 3,
-    includes: ["200Wh Indoor Battery", "80W Solar Panel", "PAYG Subscription Enabled"]
-  },
-  {
-    slug: "lumos-prime",
-    name: "Lumos Prime / LT",
-    tagline: "Handles a standard TV, decoder, and laptop charging.",
-    maxContinuousWatts: 160,
-    maxSurgeWatts: 200,
-    inverter: { brand: "Lumos", model: "Prime", kva: 0.2, type: "off-grid", efficiency: 90 },
-    batteries: [{ brand: "Lumos", model: "Integrated", type: "lithium", capacityAh: 27, voltageV: 12, quantity: 1, cycleLife: 2000 }],
+    slug: "lumos-l1",
+    name: "Lumos L1 (MTN)",
+    tagline: "Basic PAYG illumination and laptop charging. (Strictly no heating loads)",
+    maxContinuousWatts: 150,
+    maxSurgeWatts: 150,
+    inverter: { brand: "Lumos", model: "L1 Integrated", kva: 0.15, type: "off-grid", efficiency: 90 },
+    batteries: [{ brand: "Lumos", model: "Internal", type: "lithium", capacityAh: 26, voltageV: 12, quantity: 1, cycleLife: 2000 }],
     panels: [{ brand: "Lumos", type: "monocrystalline", watts: 160, quantity: 1 }],
-    basePrice: 150000,
+    basePrice: 499500, // Outright verified price
     installationFee: 0,
     warrantyYears: 3,
-    includes: ["330Wh Indoor Battery Unit", "160W Solar Panel", "PAYG Setup"]
+    includes: ["320Wh Indoor Battery", "160W Solar Panel", "MTN PAYG Integration"]
   },
   {
-    slug: "ecoflow-river-2-max",
-    name: "EcoFlow RIVER 2 Max",
-    tagline: "Compact, rapid-charging powerhouse for premium setups.",
-    maxContinuousWatts: 500,
-    maxSurgeWatts: 1000,
-    inverter: { brand: "EcoFlow", model: "River 2 Max", kva: 0.5, type: "off-grid", efficiency: 95 },
-    batteries: [{ brand: "EcoFlow", model: "Internal LFP", type: "lithium", capacityAh: 40, voltageV: 12.8, quantity: 1, cycleLife: 3000 }],
-    panels: [{ brand: "EcoFlow", type: "monocrystalline", watts: 160, quantity: 1 }],
-    basePrice: 425500,
+    slug: "cola-1000-pro",
+    name: "Cola 1000 Pro",
+    tagline: "The budget champion for students and studio apartments.",
+    maxContinuousWatts: 1000,
+    maxSurgeWatts: 2000,
+    inverter: { brand: "Cola", model: "1000 Pro", kva: 1.0, type: "off-grid", efficiency: 92 },
+    batteries: [{ brand: "Cola", model: "Integrated LFP", type: "lithium", capacityAh: 40, voltageV: 25.6, quantity: 1, cycleLife: 4000 }],
+    panels: [{ brand: "Generic", type: "monocrystalline", watts: 200, quantity: 1 }],
+    basePrice: 270000, 
+    installationFee: 0,
+    warrantyYears: 1,
+    includes: ["1000Wh Portable Station", "Pure Sine Wave Inverter", "Plug-and-Play"]
+  },
+  {
+    slug: "ecoflow-river-2-pro",
+    name: "EcoFlow RIVER 2 Pro",
+    tagline: "X-Boost technology for premium, rapid-charging portable power.",
+    maxContinuousWatts: 800,
+    maxSurgeWatts: 1600, // X-Boost enabled
+    inverter: { brand: "EcoFlow", model: "River 2 Pro", kva: 0.8, type: "off-grid", efficiency: 95 },
+    batteries: [{ brand: "EcoFlow", model: "Internal LFP", type: "lithium", capacityAh: 60, voltageV: 12.8, quantity: 1, cycleLife: 3000 }],
+    panels: [{ brand: "EcoFlow", type: "monocrystalline", watts: 220, quantity: 1 }],
+    basePrice: 528500,
     installationFee: 0,
     warrantyYears: 5,
-    includes: ["512Wh LFP Power Station", "160W Portable Panel", "60-Min Fast Charge"]
-  },
-  {
-    slug: "itel-power-tank",
-    name: "itel Power Tank 1000",
-    tagline: "Silent 1kWh backup for remote workers and light entertainment.",
-    maxContinuousWatts: 500,
-    maxSurgeWatts: 600,
-    inverter: { brand: "itel", model: "IESS-05K10N", kva: 0.5, type: "off-grid", efficiency: 95 },
-    batteries: [{ brand: "itel", model: "Integrated LFP", type: "lithium", capacityAh: 40, voltageV: 25.6, quantity: 1, cycleLife: 6000 }],
-    panels: [{ brand: "Generic", type: "monocrystalline", watts: 250, quantity: 1 }],
-    basePrice: 380000,
-    installationFee: 0,
-    warrantyYears: 2,
-    includes: ["1000Wh Portable Power Station", "250W Portable Panel", "20ms UPS Switchover"]
-  },
-  {
-    slug: "ecoflow-delta-2",
-    name: "EcoFlow DELTA 2",
-    tagline: "Premium portable generator. Can start a chest freezer.",
-    maxContinuousWatts: 1800,
-    maxSurgeWatts: 2700,
-    inverter: { brand: "EcoFlow", model: "Delta 2", kva: 1.8, type: "off-grid", efficiency: 96 },
-    batteries: [{ brand: "EcoFlow", model: "Internal LFP", type: "lithium", capacityAh: 40, voltageV: 25.6, quantity: 1, cycleLife: 3000 }],
-    panels: [{ brand: "EcoFlow", type: "monocrystalline", watts: 400, quantity: 1 }],
-    basePrice: 1057000,
-    installationFee: 0,
-    warrantyYears: 5,
-    includes: ["1024Wh Premium Power Station", "400W Foldable Panel", "Smartphone App"]
+    includes: ["768Wh LFP Battery", "60-Min Grid Fast Charge", "Smartphone Monitoring App"]
   },
 
-  // ─── PERMANENT HYBRID TIERS (REQUIRES INSTALLATION) ───────────
+  // ─── ENTRY PERMANENT & HEAVY SURGE ──────────────────────────
   {
-    slug: "luminous-standard",
+    slug: "luminous-eco-volt",
     name: "Luminous Basic Backup",
-    tagline: "Trusted Indian engineering for everyday home backup.",
-    maxContinuousWatts: 2800,
-    maxSurgeWatts: 4500,
-    inverter: { brand: "Luminous", model: "Cruze+", kva: 3.5, type: "hybrid", efficiency: 82 },
-    batteries: [{ brand: "Luminous", model: "Tubular", type: "lead-acid", capacityAh: 220, voltageV: 12, quantity: 4, cycleLife: 1000 }],
-    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 400, quantity: 4 }],
-    basePrice: 1250000,
-    installationFee: 120000,
+    tagline: "Rugged Indian engineering to survive the harshest grid fluctuations.",
+    maxContinuousWatts: 1260, // True watts from 1.5KVA @ 0.84 PF
+    maxSurgeWatts: 2520,
+    inverter: { brand: "Luminous", model: "Eco Volt Neo 1500", kva: 1.5, type: "hybrid", efficiency: 84 },
+    batteries: [{ brand: "Luminous", model: "Inverlast", type: "lead-acid", capacityAh: 220, voltageV: 12, quantity: 2, cycleLife: 1000 }],
+    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 300, quantity: 4 }],
+    basePrice: 821000, // ₦165k Inv + ₦328k*2 Batt
+    installationFee: 100000,
     warrantyYears: 1,
-    includes: ["3.5KVA Luminous Inverter", "4x 220Ah Tubular Batteries", "Roof Mounts & Wiring"]
+    includes: ["1.5KVA Luminous Inverter", "2x 220Ah Tubular Batteries", "ABCC Charging Tech"]
   },
   {
-    slug: "hustler-plus-felicity",
-    name: "Felicity Hustler+",
-    tagline: "The Nigerian favorite. Lithium-powered resilience for standard homes.",
-    maxContinuousWatts: 4000, // Accounted for 0.8 PF of 5KVA
-    maxSurgeWatts: 7500,
-    inverter: { brand: "Felicity", model: "FL-IV", kva: 5, type: "hybrid", efficiency: 85 },
+    slug: "sako-alaba-special",
+    name: "Sako High-Volume",
+    tagline: "The Alaba market favorite. High capacity, pure off-grid value.",
+    maxContinuousWatts: 4000,
+    maxSurgeWatts: 8400,
+    inverter: { brand: "Sako", model: "Sunon 4.2KVA", kva: 4.2, type: "off-grid", efficiency: 95 },
+    batteries: [{ brand: "Generic", model: "LFP Wall", type: "lithium", capacityAh: 100, voltageV: 24, quantity: 1, cycleLife: 4000 }],
+    panels: [{ brand: "Canadian Solar", type: "monocrystalline", watts: 400, quantity: 6 }],
+    basePrice: 1110000, // ₦410k Inv + ₦700k Batt
+    installationFee: 120000,
+    warrantyYears: 1,
+    includes: ["4.2KVA Sako Inverter", "2.5kWh Lithium Storage", "High-Voltage MPPT"]
+  },
+  {
+    slug: "bluegate-surge-master",
+    name: "Blue Gate Surge Master",
+    tagline: "Massive internal transformers designed to start heavy AC compressors.",
+    maxContinuousWatts: 3500, // True continuous of BG5500
+    maxSurgeWatts: 10500, // 300% surge capability!
+    inverter: { brand: "Blue Gate", model: "BG5500", kva: 5.5, type: "hybrid", efficiency: 80 },
     batteries: [{ brand: "Felicity", model: "LFP Wall", type: "lithium", capacityAh: 100, voltageV: 48, quantity: 1, cycleLife: 6000 }],
-    panels: [{ brand: "Canadian Solar", type: "monocrystalline", watts: 450, quantity: 6 }],
-    basePrice: 1680000,
+    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 450, quantity: 6 }],
+    basePrice: 1877000, // ₦380k Inv + ₦1.49M Batt
+    installationFee: 150000,
+    warrantyYears: 2,
+    includes: ["5.5KVA Blue Gate Inverter", "5.12kWh Lithium Battery", "Extreme Inductive Resilience"]
+  },
+
+  // ─── PREMIUM & COMMERCIAL ───────────────────────────────────
+  {
+    slug: "felicity-commercial",
+    name: "Felicity Standard Home",
+    tagline: "The reliable workhorse of the Nigerian residential class.",
+    maxContinuousWatts: 5000, 
+    maxSurgeWatts: 10000,
+    inverter: { brand: "Felicity", model: "IVEM 5048-LV", kva: 5, type: "hybrid", efficiency: 90 },
+    batteries: [{ brand: "Felicity", model: "LFP Wall", type: "lithium", capacityAh: 100, voltageV: 48, quantity: 1, cycleLife: 6000 }],
+    panels: [{ brand: "Canadian Solar", type: "monocrystalline", watts: 450, quantity: 8 }],
+    basePrice: 2247200, // ₦750k Inv + ₦1.49M Batt
     installationFee: 150000,
     warrantyYears: 5,
-    includes: ["5KVA Felicity Hybrid Inverter", "5.12kWh Lithium Battery", "BMS Integration"]
+    includes: ["5KVA Felicity Hybrid Inverter", "5.12kWh Lithium Storage", "Full Local Warranty Support"]
   },
   {
     slug: "prag-heavy-duty",
-    name: "PRAG Heavy-Duty",
-    tagline: "Built to withstand brutal surges and heavy pumping loads.",
-    maxContinuousWatts: 5000, 
-    maxSurgeWatts: 12000,
-    inverter: { brand: "PRAG", model: "Heavy Duty Hybrid", kva: 6.3, type: "hybrid", efficiency: 90 },
-    batteries: [{ brand: "PRAG", model: "LFP Wall", type: "lithium", capacityAh: 100, voltageV: 48, quantity: 2, cycleLife: 6000 }],
-    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 450, quantity: 8 }],
-    basePrice: 2850000,
+    name: "PRAG Swiss-Engineered",
+    tagline: "Unbreakable European internal componentry with 0ms transfer time.",
+    maxContinuousWatts: 5000,
+    maxSurgeWatts: 10000,
+    inverter: { brand: "PRAG", model: "Advanced Modular Online", kva: 5, type: "hybrid", efficiency: 94 },
+    batteries: [{ brand: "PRAG", model: "LFP Wall", type: "lithium", capacityAh: 100, voltageV: 48, quantity: 1, cycleLife: 6000 }],
+    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 550, quantity: 8 }],
+    basePrice: 1750000, // ₦600k Inv + ₦1.15M Batt
     installationFee: 200000,
     warrantyYears: 5,
-    includes: ["6.3KVA PRAG Inverter", "10.24kWh Lithium Storage", "Advanced Surge Protection"]
+    includes: ["5KVA PRAG Online Inverter", "Zero-Millisecond UPS Switchover", "Server-Grade Reliability"]
   },
   {
-    slug: "odogwu-premium-deye",
-    name: "Deye Premium",
-    tagline: "Smart, heavy-duty power for multiple ACs and large water pumps.",
-    maxContinuousWatts: 7500,
-    maxSurgeWatts: 15000,
-    inverter: { brand: "Deye", model: "SUN-8K", kva: 8, type: "hybrid", efficiency: 97 },
-    batteries: [{ brand: "Pylontech", model: "US3000C", type: "lithium", capacityAh: 74, voltageV: 48, quantity: 3, cycleLife: 6000 }],
-    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 550, quantity: 10 }],
-    basePrice: 3800000,
+    slug: "ecoflow-delta-pro",
+    name: "EcoFlow DELTA Pro",
+    tagline: "The ultimate 3.6kWh portable flagship. Powers heavy home loads.",
+    maxContinuousWatts: 3600,
+    maxSurgeWatts: 7200,
+    inverter: { brand: "EcoFlow", model: "Delta Pro", kva: 3.6, type: "off-grid", efficiency: 96 },
+    batteries: [{ brand: "EcoFlow", model: "Internal LFP", type: "lithium", capacityAh: 75, voltageV: 48, quantity: 1, cycleLife: 6500 }],
+    panels: [{ brand: "EcoFlow", type: "monocrystalline", watts: 400, quantity: 2 }],
+    basePrice: 2038399,
+    installationFee: 0,
+    warrantyYears: 5,
+    includes: ["3600Wh Power Station", "2.7-Hour Grid Fast Charge", "Zero Installation Required"]
+  },
+  {
+    slug: "deye-flagship",
+    name: "Deye Advanced Flagship",
+    tagline: "The gold standard. Smart load separation and massive surge handling.",
+    maxContinuousWatts: 8000,
+    maxSurgeWatts: 16000, // 10-second sustained surge window
+    inverter: { brand: "Deye", model: "SUN-8K-SG04LP3-EU", kva: 8, type: "hybrid", efficiency: 97 },
+    batteries: [{ brand: "Deye", model: "SE-G5.1Pro-B", type: "lithium", capacityAh: 100, voltageV: 51.2, quantity: 2, cycleLife: 6000 }],
+    panels: [{ brand: "Jinko", type: "monocrystalline", watts: 550, quantity: 12 }],
+    basePrice: 3360000, // ₦1.68M Inv + (₦840k * 2) Batt
     installationFee: 250000,
     warrantyYears: 10,
-    includes: ["8KVA Deye Smart Inverter", "10.6kWh Stacked Lithium", "Full Remote Diagnostics"]
-  },
-  {
-    slug: "oga-boss-victron",
-    name: "Victron Oga Boss",
-    tagline: "Total energy independence for luxury estates. Zero compromises.",
-    maxContinuousWatts: 12000,
-    maxSurgeWatts: 24000,
-    inverter: { brand: "Victron", model: "Quattro", kva: 15, type: "hybrid", efficiency: 96 },
-    batteries: [{ brand: "BYD", model: "Premium LVL", type: "lithium", capacityAh: 154, voltageV: 51.2, quantity: 2, cycleLife: 8000 }],
-    panels: [{ brand: "Canadian Solar", type: "monocrystalline", watts: 600, quantity: 16 }],
-    basePrice: 7500000,
-    installationFee: 500000,
-    warrantyYears: 10,
-    includes: ["15KVA Victron Architecture", "15.7kWh BYD Blade Battery", "Auto-Gen Start"]
+    includes: ["8KVA Deye Hybrid Architecture", "10.24kWh Proprietary Storage", "Fouani Warranty Network"]
   }
 ];
