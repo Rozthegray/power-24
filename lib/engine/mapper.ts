@@ -246,6 +246,7 @@ export function buildQuoteResult(
     monthlyPaymentOption,
     warnings: extraction.warnings,
     confidenceScore: extraction.confidenceScore,
+    engineersVerdict: extraction.engineersVerdict,
     recommendedInstallers: installers,
   };
 }
