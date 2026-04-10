@@ -40,6 +40,7 @@ export interface AIExtractionResult {
   totalSurgeWatts: number;
   estimatedDailyWattHours: number;
   confidenceScore: number;    // 0–1
+  engineersVerdict: string;   // The honest breakdown
   warnings: string[];         // e.g. "AC wattage assumed"
 }
 
@@ -111,6 +112,7 @@ export interface QuoteResult {
   totalPriceNGN: number;
   monthlyPaymentOption: number; // ~36 months estimate
   warnings: AIExtractionResult["warnings"];
+  engineersVerdict: string;     // Passed through to the UI
   confidenceScore: number;
   recommendedInstallers: RecommendedInstaller[];
 }
