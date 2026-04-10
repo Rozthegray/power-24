@@ -158,6 +158,21 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         </button>
       </div>
 
+      {/* ─── Engineer's Verdict ──────────────────────────────── */}
+      {quote.engineersVerdict && (
+        <div className="mx-6 mb-6 p-5 rounded-xl bg-slate-900 border border-slate-800 shadow-lg">
+          <div className="flex items-center gap-2 mb-2">
+            <span className="text-xl">🧠</span>
+            <p className="text-xs font-black text-slate-300 uppercase tracking-wider">
+              Engineer's Honest Verdict
+            </p>
+          </div>
+          <p className="text-sm text-slate-100 leading-relaxed font-medium">
+            {quote.engineersVerdict}
+          </p>
+        </div>
+      )}
+
       {/* ─── Warnings ───────────────────────────────────────── */}
       {quote.warnings && quote.warnings.length > 0 && (
         <div className="mx-6 mb-6 p-4 rounded-xl bg-orange-50 border border-orange-100">
@@ -222,7 +237,6 @@ function OverviewTab({ quote, colors }: { quote: QuoteResult; colors: typeof DEF
           What's Included
         </h3>
         <ul className="space-y-2.5">
-          {/* Natively mapped from the package database! No more hardcoding! */}
           {pkg.includes.map((item, i) => (
             <li key={i} className="flex gap-3 text-sm text-slate-600 font-medium">
               <span className={`shrink-0 mt-0.5 ${colors.accent}`}>✓</span>
