@@ -65,13 +65,17 @@ export function computeLoadProfile(
 // ─── Step 2: Select Package (The Surge Router) ────────────────
 
 export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPackage {
-  const wantsPortable = warnings.includes("PORTABLE_RECOMMENDED");
+  // 1. FOOLPROOF PORTABLE CHECK: Trust the math, not just the AI.
+  const aiWantsPortable = warnings.includes("PORTABLE_RECOMMENDED");
+  const mathWantsPortable = profile.continuousLoad <= 800 && profile.surgeLoad <= 1500;
+  const isPortableLoad = aiWantsPortable || mathWantsPortable;
+
   const surgeRatio = profile.continuousLoad > 0 ? (profile.surgeLoad / profile.continuousLoad) : 1;
 
   // ─── INDUCTIVE SURGE OVERRIDE ──────────────────────────────
-  // If the surge is more than 2x the continuous load, this is a motor-heavy house (ACs, Pumps).
-  // We MUST route them to heavy-transformer systems (Blue Gate, PRAG, Deye).
-  if (!wantsPortable && surgeRatio > 2.0) {
+  // If the surge is huge (more than 2x continuous) AND it's not a tiny portable load,
+  // route them to heavy-transformer systems (Blue Gate, PRAG, Deye).
+  if (!isPortableLoad && surgeRatio > 2.0) {
     const surgeMonsters = ["bluegate-surge-master", "prag-heavy-duty", "deye-flagship"];
     for (const slug of surgeMonsters) {
       const pkg = SOLAR_PACKAGES.find(p => p.slug === slug);
@@ -88,9 +92,8 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
   for (const pkg of sorted) {
     const isPortablePkg = ["lumos-l1", "cola-1000-pro", "ecoflow-river-2-pro", "ecoflow-delta-pro"].includes(pkg.slug);
 
-    // Keep portables out of permanent results, and vice versa
-    if (wantsPortable && !isPortablePkg) continue;
-    if (!wantsPortable && isPortablePkg) continue;
+    // If it's a huge house load, hide the portables. If it's a tiny load, allow them!
+    if (!isPortableLoad && isPortablePkg) continue;
 
     // Apply Empirical 0.8 Power Factor Penalty to Budget Inverters
     const isBudgetInverter = ["Felicity", "Lumos", "itel", "Luminous"].includes(pkg.inverter.brand);
@@ -105,7 +108,7 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
   }
 
   // ─── FALLBACKS ─────────────────────────────────────────────
-  if (wantsPortable) {
+  if (isPortableLoad) {
     return SOLAR_PACKAGES.find(p => p.slug === "ecoflow-delta-pro") || sorted[sorted.length - 1];
   }
   return sorted[sorted.length - 1]; // Default to Deye Flagship if off the charts
