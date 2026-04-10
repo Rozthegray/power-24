@@ -81,7 +81,6 @@ export function computeLoadProfile(
 // ─── Step 2: Select Package (The Surge Router) ────────────────
 
 export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPackage {
-  // 1. FOOLPROOF PORTABLE CHECK: Trust the math, not just the AI.
   const aiWantsPortable = warnings.includes("PORTABLE_RECOMMENDED");
   const mathWantsPortable = profile.continuousLoad <= 800 && profile.surgeLoad <= 1500;
   const isPortableLoad = aiWantsPortable || mathWantsPortable;
@@ -89,36 +88,47 @@ export function selectPackage(profile: LoadProfile, warnings: string[]): SolarPa
   const surgeRatio = profile.continuousLoad > 0 ? (profile.surgeLoad / profile.continuousLoad) : 1;
 
   // ─── INDUCTIVE SURGE OVERRIDE ──────────────────────────────
-  // If the surge is huge (more than 2x continuous) AND it's not a tiny portable load,
-  // route them to heavy-transformer systems (Blue Gate, PRAG, Deye).
   if (!isPortableLoad && surgeRatio > 2.0) {
     const surgeMonsters = ["bluegate-surge-master", "prag-heavy-duty", "deye-flagship"];
     for (const slug of surgeMonsters) {
       const pkg = SOLAR_PACKAGES.find(p => p.slug === slug);
-      if (pkg && profile.continuousLoad <= pkg.maxContinuousWatts && profile.surgeLoad <= pkg.maxSurgeWatts) {
+      // Ensure battery is large enough even for surge monsters
+      const totalBatteryWh = pkg ? pkg.batteries.reduce((sum, b) => sum + (b.capacityAh * b.voltageV * b.quantity), 0) : 0;
+      const minimumBatteryWh = Math.max(profile.continuousLoad * 3, profile.dailyEnergyWh * 0.4);
+
+      if (pkg && profile.continuousLoad <= pkg.maxContinuousWatts && profile.surgeLoad <= pkg.maxSurgeWatts && totalBatteryWh >= minimumBatteryWh) {
         return pkg;
       }
     }
   }
 
   // ─── STANDARD ROUTING ──────────────────────────────────────
-  // Sort packages from smallest to largest continuous watts
   const sorted = [...SOLAR_PACKAGES].sort((a, b) => a.maxContinuousWatts - b.maxContinuousWatts);
 
   for (const pkg of sorted) {
     const isPortablePkg = ["lumos-l1", "cola-1000-pro", "ecoflow-river-2-pro", "ecoflow-delta-pro"].includes(pkg.slug);
 
-    // If it's a huge house load, hide the portables. If it's a tiny load, allow them!
     if (!isPortableLoad && isPortablePkg) continue;
 
-    // Apply Empirical 0.8 Power Factor Penalty to Budget Inverters
     const isBudgetInverter = ["Felicity", "Lumos", "itel", "Luminous"].includes(pkg.inverter.brand);
     const actualContinuousLimit = isBudgetInverter
       ? pkg.inverter.kva * 1000 * 0.8
       : pkg.maxContinuousWatts;
 
-    // Check if system can handle the load
-    if (profile.continuousLoad <= actualContinuousLimit && profile.surgeLoad <= pkg.maxSurgeWatts) {
+    // ─── NEW: BATTERY STORAGE REALITY CHECK ──────────────────
+    // Calculate the total Watt-Hours in this package's battery bank
+    const totalBatteryWh = pkg.batteries.reduce((sum, b) => sum + (b.capacityAh * b.voltageV * b.quantity), 0);
+    
+    // The battery MUST be large enough to survive at least 3 hours of the continuous load, 
+    // OR hold at least 40% of the user's total daily energy demand.
+    const minimumBatteryWh = Math.max(profile.continuousLoad * 3, profile.dailyEnergyWh * 0.4);
+
+    // Check if system can handle the load AND the battery has enough capacity
+    if (
+      profile.continuousLoad <= actualContinuousLimit && 
+      profile.surgeLoad <= pkg.maxSurgeWatts &&
+      totalBatteryWh >= minimumBatteryWh // <-- This prevents the EcoFlow from running 2 fridges!
+    ) {
       return pkg;
     }
   }
