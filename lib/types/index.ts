@@ -1,66 +1,50 @@
 // ============================================================
 // lib/types/index.ts
-// Central type registry for Power 24. Every shape that crosses
-// a boundary (AI → Engine → API → UI) is defined here.
+// Central type registry for Power 24.
 // ============================================================
 
-// ─── Raw input from the user ────────────────────────────────
 export interface QuoteRequest {
-  description: string; // Free-text appliance list
-  location?: string;   // Optional: Lagos, Abuja, etc.
+  description: string;
+  location?: string;
   budgetRange?: "economy" | "standard" | "premium";
 }
 
-// ─── What the AI extracts ───────────────────────────────────
 export interface DetectedAppliance {
   name: string;
   quantity: number;
-  unitWatts: number;          // Rated wattage per unit
-  dailyHours: number;         // Hours of use per day
-  hasSurge: boolean;          // Motor/compressor load?
-  surgeMultiplier: number;    // 1x–3x
+  unitWatts: number;
+  dailyHours: number;
+  hasSurge: boolean;
+  surgeMultiplier: number;
   category: ApplianceCategory;
 }
 
 export type ApplianceCategory =
-  | "lighting"
-  | "cooling"
-  | "refrigeration"
-  | "entertainment"
-  | "computing"
-  | "water_pump"
-  | "cooking"
-  | "security"
-  | "other";
+  | "lighting" | "cooling" | "refrigeration" | "entertainment"
+  | "computing" | "water_pump" | "cooking" | "security" | "other";
 
-// ─── AI's raw output (enforced by Zod) ──────────────────────
 export interface AIExtractionResult {
   appliances: DetectedAppliance[];
   totalContinuousWatts: number;
   totalSurgeWatts: number;
   estimatedDailyWattHours: number;
-  confidenceScore: number;    // 0–1
-  warnings: string[];         // e.g. "AC wattage assumed"
+  confidenceScore: number;
+  engineersVerdict: string;
+  warnings: string[];
 }
 
-// ─── Engine computed values ─────────────────────────────────
 export interface LoadProfile {
-  continuousLoad: number;       // watts
-  surgeLoad: number;            // watts (peak)
-  dailyEnergyWh: number;        // watt-hours per day
-  bufferedEnergyWh: number;     // with 30% safety buffer
-  peakSunHours: number;         // location-adjusted (avg 5.5 NG)
+  continuousLoad: number;
+  surgeLoad: number;
+  dailyEnergyWh: number;
+  bufferedEnergyWh: number;
+  peakSunHours: number;
   requiredPanelWatts: number;
-  requiredBatteryAh: number;    // at 48V system
+  requiredBatteryAh: number;
   requiredInverterKva: number;
 }
 
-// ─── Package / Tier ─────────────────────────────────────────
-export type TierSlug =
-  | "sapa-lite"
-  | "hustler-plus"
-  | "odogwu-premium"
-  | "oga-boss";
+export type TierSlug = string;
 
 export interface SolarPackage {
   slug: TierSlug;
@@ -71,8 +55,8 @@ export interface SolarPackage {
   inverter: InverterSpec;
   batteries: BatterySpec[];
   panels: PanelSpec[];
-  basePrice: number;           // NGN, hardware only
-  installationFee: number;     // NGN flat fee
+  basePrice: number;
+  installationFee: number;
   warrantyYears: number;
   includes: string[];
 }
@@ -82,7 +66,7 @@ export interface InverterSpec {
   model: string;
   kva: number;
   type: "hybrid" | "off-grid" | "grid-tie";
-  efficiency: number;          // percentage e.g. 93
+  efficiency: number;
 }
 
 export interface BatterySpec {
@@ -97,26 +81,10 @@ export interface BatterySpec {
 
 export interface PanelSpec {
   brand: string;
-  model: string;
+  model?: string;
   watts: number;
   type: "monocrystalline" | "polycrystalline";
   quantity: number;
-}
-
-// ─── Final quote response ────────────────────────────────────
-export interface QuoteResult {
-  success: true;
-  requestId: string;
-  generatedAt: string;          // ISO timestamp
-  appliances: DetectedAppliance[];
-  loadProfile: LoadProfile;
-  selectedPackage: SolarPackage;
-  lineItems: LineItem[];
-  totalPriceNGN: number;
-  monthlyPaymentOption: number; // ~36 months estimate
-  warnings: AIExtractionResult["warnings"];
-  confidenceScore: number;
-  recommendedInstallers: RecommendedInstaller[];
 }
 
 export interface LineItem {
@@ -125,6 +93,49 @@ export interface LineItem {
   unitPrice: number;
   total: number;
   category: "hardware" | "installation" | "warranty" | "misc";
+}
+
+export interface ScoreBreakdown {
+  load: number;
+  battery: number;
+  solar: number;
+  surge: number;
+  environment: number;
+}
+
+export interface UpgradeProjection {
+  action: string;
+  projectedScore: number;
+}
+
+export interface RankedPackage {
+  tierLabel: "🟢 Survival Tier" | "🟡 Conditionally Reliable" | "🔵 Full Comfort Tier" | "Alternative Option";
+  package: SolarPackage;
+  lineItems: LineItem[];
+  totalPriceNGN: number;
+  monthlyPaymentOption: number;
+  estimatedRuntimeRange: string; 
+  backupCapacityDays: string;    
+  reliabilityScore: number; 
+  scoreBreakdown: ScoreBreakdown; 
+  consequenceText: string;
+  realityCheckText: string;
+  bestForText: string;
+  notIdealForText: string;
+  upgradeProjections: UpgradeProjection[];
+}
+
+export interface QuoteResult {
+  success: true;
+  requestId: string;
+  generatedAt: string;
+  appliances: DetectedAppliance[];
+  loadProfile: LoadProfile;
+  options: RankedPackage[];
+  warnings: string[];
+  engineersVerdict: string;
+  confidenceScore: number; 
+  recommendedInstallers: RecommendedInstaller[];
 }
 
 export interface RecommendedInstaller {
@@ -139,7 +150,6 @@ export interface RecommendedInstaller {
   specialties: string[];
 }
 
-// ─── API error shape ─────────────────────────────────────────
 export interface QuoteError {
   success: false;
   error: string;
@@ -148,10 +158,7 @@ export interface QuoteError {
 }
 
 export type ErrorCode =
-  | "VALIDATION_ERROR"
-  | "AI_PARSE_FAILURE"
-  | "ENGINE_ERROR"
-  | "RATE_LIMITED"
-  | "INTERNAL_ERROR";
+  | "VALIDATION_ERROR" | "AI_PARSE_FAILURE" | "ENGINE_ERROR"
+  | "RATE_LIMITED" | "INTERNAL_ERROR";
 
 export type QuoteResponse = QuoteResult | QuoteError;
