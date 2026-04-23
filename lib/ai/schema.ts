@@ -123,6 +123,10 @@ export const AIExtractionSchema = z.object({
       "0.4 = very vague description, many guesses made."
     ),
 
+  engineersVerdict: z
+    .string()
+    .describe("A short, brutally honest 2-sentence verdict explaining the biggest risk factor based on the load profile vs the chosen system (e.g., 'Running 2 ACs all night will drain this battery. Plan to run only 1 at night.')"),
+
   warnings: z
     .array(z.string().max(200))
     .max(10)
