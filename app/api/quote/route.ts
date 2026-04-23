@@ -6,9 +6,8 @@
 //   1. Validate & sanitize input
 //   2. Rate limit by IP
 //   3. Call OpenAI via Vercel AI SDK → generateObject()
-//   4. Run the load profile engine
-//   5. Select package & build final quote
-//   6. Return JSON
+//   4. Pass extraction to mapper.ts (Engine)
+//   5. Return multi-option JSON
 // ============================================================
 
 import { NextRequest, NextResponse } from "next/server";
@@ -16,14 +15,10 @@ import { generateObject } from "ai";
 import { openai } from "@ai-sdk/openai";
 import { AIExtractionSchema } from "@/lib/ai/schema";
 import { SYSTEM_PROMPT, buildUserPrompt } from "@/lib/ai/prompt";
-import {
-  computeLoadProfile,
-  selectPackage,
-  buildQuoteResult,
-} from "@/lib/engine/mapper";
+import { buildQuoteResult } from "@/lib/engine/mapper";
 import { rateLimit } from "@/lib/utils/rate-limit";
 import { QuoteRequestSchema, sanitizeInput } from "@/lib/utils/validate";
-import type { QuoteResponse } from "@/lib/types";
+import type { QuoteResponse, AIExtractionResult } from "@/lib/types";
 
 // ─── Types ────────────────────────────────────────────────────
 export type ApiErrorResponse = {
@@ -97,9 +92,8 @@ export async function POST(
       );
     }
 
-  const parsed = QuoteRequestSchema.safeParse(body);
+    const parsed = QuoteRequestSchema.safeParse(body);
     if (!parsed.success) {
-      // FIX: Changed .errors[0] to .issues[0] for strict Zod typing
       const firstError = parsed.error.issues[0]; 
       return NextResponse.json(
         {
@@ -112,25 +106,25 @@ export async function POST(
       );
     }
 
-    const { description, location, budgetRange } = parsed.data;
+    const { description, location } = parsed.data;
     const safeDescription = sanitizeInput(description);
 
     // 3. Call OpenAI via Vercel AI SDK
-    let extraction;
+    let extraction: AIExtractionResult;
     try {
       const result = await generateObject({
         model: openai("gpt-4o"),
-        schema: AIExtractionSchema, // Fixed typo: removed trailing slash
+        schema: AIExtractionSchema,
         system: SYSTEM_PROMPT,
         prompt: buildUserPrompt(safeDescription, location),
-        temperature: 0.1, // Low temperature: we want deterministic physics, not creativity
+        temperature: 0.1, // Low temperature for deterministic physics
         maxRetries: 2,
       });
-      extraction = result.object;
+      // Explicitly cast the result so TypeScript knows it matches our strict interface
+      extraction = result.object as AIExtractionResult;
     } catch (aiError: unknown) {
       console.error("[Power 24] OpenAI error:", aiError);
 
-      // Check if it's a structured parsing failure
       const errorMessage =
         aiError instanceof Error ? aiError.message : "Unknown AI error";
       const isParseFailure = errorMessage.includes("parse") ||
@@ -153,22 +147,10 @@ export async function POST(
       );
     }
 
-    // 4. Run the engineering engine
-    let loadProfile;
-    let selectedPackage;
+    // 4 & 5. Run the engine and assemble the final quote
+    let quote;
     try {
-      loadProfile = computeLoadProfile(extraction, location);
-      selectedPackage = selectPackage(loadProfile);
-
-      // Override: if user specified economy budget, step down one tier if possible
-      if (budgetRange === "economy") {
-        const currentIndex = ["sapa-lite", "hustler-plus", "odogwu-premium", "oga-boss"]
-          .indexOf(selectedPackage.slug);
-        if (currentIndex > 0) {
-          // Note: lower tier may not technically fit — add a warning
-          // In production, you might show two options instead
-        }
-      }
+      quote = buildQuoteResult(extraction, location);
     } catch (engineError) {
       console.error("[Power 24] Engine error:", engineError);
       return NextResponse.json(
@@ -182,14 +164,6 @@ export async function POST(
       );
     }
 
-    // 5. Assemble and return final quote
-    const quote = buildQuoteResult(
-      { description: safeDescription, location, budgetRange },
-      extraction,
-      loadProfile,
-      selectedPackage
-    );
-
     return NextResponse.json(quote, {
       status: 200,
       headers: {
@@ -198,7 +172,6 @@ export async function POST(
       },
     });
   } catch (error) {
-    // Catch-all for truly unexpected errors
     console.error("[Power 24] Unhandled error in /api/quote:", error);
     return NextResponse.json(
       {
