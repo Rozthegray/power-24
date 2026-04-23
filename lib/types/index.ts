@@ -1,6 +1,8 @@
 // ============================================================
-// lib/types/index.ts
+// lib/types/index.ts  v2.0
 // Central type registry for Power 24.
+// v2.0 additions: SeasonalAnalysis, SystemDerateBreakdown,
+//   extended LoadProfile and RankedPackage for engineering fields.
 // ============================================================
 
 export interface QuoteRequest {
@@ -42,6 +44,13 @@ export interface LoadProfile {
   requiredPanelWatts: number;
   requiredBatteryAh: number;
   requiredInverterKva: number;
+  // v2.0 additions
+  /** Concurrent load diversity factor applied (0.75–1.0 per IEC 60364) */
+  diversityFactor: number;
+  /** Combined system derate factor (wiring × MPPT × temp × soiling ≈ 0.765) */
+  systemDerate: number;
+  /** Target backup autonomy in hours used for battery sizing */
+  autonomyHours: number;
 }
 
 export type TierSlug = string;
@@ -100,6 +109,7 @@ export interface ScoreBreakdown {
   battery: number;
   solar: number;
   surge: number;
+  /** Battery quality score: chemistry type + cycle life rating */
   environment: number;
 }
 
@@ -108,21 +118,71 @@ export interface UpgradeProjection {
   projectedScore: number;
 }
 
+// ─── v2.0 NEW TYPES ──────────────────────────────────────────
+
+/**
+ * Seasonal reliability analysis.
+ * Nigerian solar yield drops significantly during the rainy season
+ * (April–October). This type exposes the performance gap so customers
+ * know the worst-case they should expect, not just the annual average.
+ */
+export interface SeasonalAnalysis {
+  /** Reliability score during dry season (Nov–Mar): best case */
+  drySeasonReliability: number;
+  /** Reliability score during rainy season (Apr–Oct): worst case */
+  rainySeasonReliability: number;
+  /** Rainy-season peak sun hours for this location */
+  worstCasePSH: number;
+  /** Daily generation (Wh) under rainy-season conditions */
+  worstCaseDailyGenWh: number;
+}
+
+/**
+ * Explicit system derate breakdown.
+ * Every solar installation loses efficiency between the panel and the load.
+ * These are the standard engineering derates used by NABCEP-certified designers.
+ */
+export interface SystemDerateBreakdown {
+  /** DC + AC wiring resistive losses (~3%) */
+  wiring: number;
+  /** MPPT charge controller efficiency loss (~3%) */
+  mppt: number;
+  /** Panel temperature derating at Nigerian ambient (~12%) */
+  temperature: number;
+  /** Dust and soiling losses — Harmattan season (~5%) */
+  soiling: number;
+  /** Combined product of all derates above (~0.765) */
+  combined: number;
+}
+
+// ─── EXTENDED INTERFACES ─────────────────────────────────────
+
 export interface RankedPackage {
   tierLabel: "🟢 Survival Tier" | "🟡 Conditionally Reliable" | "🔵 Full Comfort Tier" | "Alternative Option";
   package: SolarPackage;
   lineItems: LineItem[];
   totalPriceNGN: number;
   monthlyPaymentOption: number;
-  estimatedRuntimeRange: string; 
-  backupCapacityDays: string;    
-  reliabilityScore: number; 
-  scoreBreakdown: ScoreBreakdown; 
+  estimatedRuntimeRange: string;
+  backupCapacityDays: string;
+  reliabilityScore: number;
+  scoreBreakdown: ScoreBreakdown;
   consequenceText: string;
   realityCheckText: string;
   bestForText: string;
   notIdealForText: string;
   upgradeProjections: UpgradeProjection[];
+  // v2.0 additions
+  /** Dry vs. rainy season reliability comparison */
+  seasonalAnalysis: SeasonalAnalysis;
+  /** Actual usable Wh after DoD and round-trip efficiency */
+  batteryUsableWh: number;
+  /** Depth-of-discharge limit for this battery chemistry */
+  batteryDOD: number;
+  /** Full system derate breakdown for engineering transparency */
+  systemDerateFactors: SystemDerateBreakdown;
+  /** Diversity factor applied to concurrent load calculation */
+  diversityFactor: number;
 }
 
 export interface QuoteResult {
@@ -134,7 +194,7 @@ export interface QuoteResult {
   options: RankedPackage[];
   warnings: string[];
   engineersVerdict: string;
-  confidenceScore: number; 
+  confidenceScore: number;
   recommendedInstallers: RecommendedInstaller[];
 }
 
