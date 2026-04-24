@@ -197,7 +197,7 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         {currentOption.acRuntimeHours !== null && currentOption.acRuntimeHours !== undefined && (
           <AcRuntimeCallout
             acRuntimeHours={currentOption.acRuntimeHours}
-            overProvisioningRatio={currentOption.overProvisioningRatio}
+            overProvisioningRatio={currentOption.overProvisioningRatio ?? 0}
           />
         )}
 
