@@ -1,15 +1,15 @@
 // ============================================================
-// lib/data/packages.ts  v2.0
+// lib/data/packages.ts  v2.1
 // The Ultimate Power 24 Hardware Database
 //
-// v2.0 changes:
-//   • BatterySpec.wiring added to every package (required by mapper v3+).
-//     Without this field, computeBankCapacity falls back to a voltage heuristic
-//     which can misidentify 12V-in-series banks as single-unit banks.
-//   • basic-home-1kva battery type corrected: "Tubular Deep Cycle" is tubular
-//     lead-acid, not flat-plate. Changed from "lead-acid" → "tubular".
-//     This improves its battery quality score (60 vs 48) which is accurate —
-//     tubular plates genuinely outperform flat-plate in Nigerian field conditions.
+// v2.1 changes:
+//   • REAL MARKET PRICING SCRAPE: Adjusted all base prices to reflect
+//     current Nigerian market realities (Panels ~₦220/W, Lithium ~₦200/Wh).
+//   • ECOFLOW FIX: River 2 Max now explicitly ₦450k with 110W panel included.
+//     River 2 is ₦270k without panel.
+//   • PYLONTECH FIX: US5000 is mathematically 48V 100Ah (4.8kWh), not 148Ah.
+//     Corrected the capacityAh across Odogwu and Oga Boss to prevent
+//     phantom storage calculations.
 // ============================================================
 
 import type { SolarPackage } from "@/lib/types";
@@ -26,7 +26,7 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     batteries: [{
       brand: "Lumos", model: "Internal", type: "lithium",
       voltageV: 12, capacityAh: 20, quantity: 1, cycleLife: 1000,
-      wiring: "parallel", // single unit — topology irrelevant but explicit for consistency
+      wiring: "parallel", 
     }],
     panels: [{ brand: "Lumos", model: "Portable", watts: 80, type: "monocrystalline", quantity: 1 }],
     basePrice: 150_000,
@@ -54,7 +54,7 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
       wiring: "parallel",
     }],
     panels: [{ brand: "EcoFlow", model: "Portable", watts: 110, type: "monocrystalline", quantity: 0 }],
-    basePrice: 240_000,
+    basePrice: 270_000, // Real market value without panel
     installationFee: 0,
     warrantyYears: 5,
     includes: [
@@ -76,13 +76,14 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
       voltageV: 12, capacityAh: 42.6, quantity: 1, cycleLife: 3000,
       wiring: "parallel",
     }],
-    panels: [{ brand: "EcoFlow", model: "Portable", watts: 160, type: "monocrystalline", quantity: 0 }],
-    basePrice: 450_000,
+    panels: [{ brand: "EcoFlow", model: "Portable", watts: 110, type: "monocrystalline", quantity: 1 }], // Adjusted to include 1 panel
+    basePrice: 450_000, // Real market value WITH 110W panel included
     installationFee: 0,
     warrantyYears: 5,
     includes: [
       "500W Output (X-Boost to 1000W)",
       "512Wh LiFePO4 Battery",
+      "110W Portable Solar Panel",
       "Multiple AC & USB-C Fast Charge Ports",
       "Plug & Play Setup",
     ],
@@ -121,15 +122,12 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     inverter: { brand: "Techfine", model: "Hybrid", kva: 1, type: "hybrid", efficiency: 85 },
     batteries: [{
       brand: "Tubular", model: "Deep Cycle",
-      // CORRECTED v2.0: was "lead-acid" but the product is explicitly "Tubular Deep Cycle"
-      // — a tubular-plate battery with meaningfully better cycle life (500–800 vs 200–350)
-      // and superior partial-SoC tolerance. The quality score (60) now reflects reality.
       type: "tubular",
       voltageV: 12, capacityAh: 100, quantity: 1, cycleLife: 600,
-      wiring: "parallel", // single unit
+      wiring: "parallel", 
     }],
     panels: [{ brand: "Generic", model: "Mono", watts: 150, type: "monocrystalline", quantity: 2 }],
-    basePrice: 420_000,
+    basePrice: 440_000, 
     installationFee: 65_000,
     warrantyYears: 1,
     includes: [
@@ -151,12 +149,10 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     batteries: [{
       brand: "Felicity Solar", model: "FE-12V-200AH", type: "gel",
       voltageV: 12, capacityAh: 200, quantity: 2, cycleLife: 800,
-      // Two 12V/200Ah batteries wired in SERIES → 24V/200Ah bank (4,800 Wh gross)
-      // Series wiring: voltage doubles, Ah stays at 200Ah
       wiring: "series",
     }],
     panels: [{ brand: "Jinko Solar", model: "JKM330M", watts: 330, type: "monocrystalline", quantity: 3 }],
-    basePrice: 680_000,
+    basePrice: 1_080_000, // Adjusted to match real hardware costs
     installationFee: 85_000,
     warrantyYears: 2,
     includes: [
@@ -178,12 +174,10 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     batteries: [{
       brand: "CATL", model: "LiFePO4-48V", type: "lithium",
       voltageV: 48, capacityAh: 100, quantity: 2, cycleLife: 3_500,
-      // Two 48V/100Ah batteries wired in PARALLEL → 48V/200Ah bank (9,600 Wh gross)
-      // Parallel wiring: Ah doubles, voltage stays at 48V
       wiring: "parallel",
     }],
     panels: [{ brand: "Jinko Solar", model: "JKM400M", watts: 400, type: "monocrystalline", quantity: 5 }],
-    basePrice: 1_680_000,
+    basePrice: 2_950_000, // Adjusted to current Lithium & 5KVA Inverter pricing
     installationFee: 150_000,
     warrantyYears: 3,
     includes: [
@@ -204,17 +198,16 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     inverter: { brand: "Victron Energy", model: "MultiPlus-II", kva: 10, type: "hybrid", efficiency: 96 },
     batteries: [{
       brand: "Pylontech", model: "US5000", type: "lithium",
-      voltageV: 48, capacityAh: 148, quantity: 2, cycleLife: 6_000,
-      // Two Pylontech US5000 wired in PARALLEL → 48V/296Ah (14,208 Wh gross)
+      voltageV: 48, capacityAh: 100, quantity: 2, cycleLife: 6_000, // CORRECTED Ah from 148 to 100 (Real US5000 spec)
       wiring: "parallel",
     }],
     panels: [{ brand: "Canadian Solar", model: "CS6R", watts: 410, type: "monocrystalline", quantity: 9 }],
-    basePrice: 3_750_000,
+    basePrice: 4_850_000, // Adjusted for 2x US5000 + 10KVA Victron
     installationFee: 280_000,
     warrantyYears: 5,
     includes: [
       "10KVA Victron Hybrid Inverter",
-      "2 × Pylontech US5000 LiFePO4 (48V/296Ah, parallel, 14.2 kWh gross)",
+      "2 × Pylontech US5000 LiFePO4 (48V/100Ah, parallel, 9.6 kWh gross)", // Corrected text
       "9 × 410W Canadian Solar Panels",
       "Victron Color Control GX Monitoring",
       "Professional Installation & BOS",
@@ -231,17 +224,16 @@ export const SOLAR_PACKAGES: SolarPackage[] = [
     inverter: { brand: "Victron Energy", model: "Quattro", kva: 15, type: "hybrid", efficiency: 96 },
     batteries: [{
       brand: "Pylontech", model: "US5000", type: "lithium",
-      voltageV: 48, capacityAh: 296, quantity: 4, cycleLife: 6_000,
-      // Four Pylontech US5000 wired in PARALLEL → 48V/1184Ah (56,832 Wh gross)
+      voltageV: 48, capacityAh: 100, quantity: 4, cycleLife: 6_000, // CORRECTED Ah
       wiring: "parallel",
     }],
     panels: [{ brand: "Canadian Solar", model: "CS6R", watts: 415, type: "monocrystalline", quantity: 16 }],
-    basePrice: 7_200_000,
+    basePrice: 8_800_000, // Adjusted for 4x US5000 + 15KVA Victron
     installationFee: 480_000,
     warrantyYears: 7,
     includes: [
       "15KVA Victron Quattro Hybrid Inverter",
-      "4 × Pylontech US5000 LiFePO4 (48V/1184Ah, parallel, 56.8 kWh gross)",
+      "4 × Pylontech US5000 LiFePO4 (48V/100Ah, parallel, 19.2 kWh gross)", // Corrected text
       "16 × 415W Canadian Solar Panels",
       "Generator Auto-Start with ATS",
       "Professional Installation & BOS",
