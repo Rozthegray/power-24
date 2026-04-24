@@ -1,34 +1,6 @@
 // ============================================================
-// lib/engine/mapper.ts  v3.0
+// lib/engine/mapper.ts  v4.0 (The Unified Engine)
 // PRODUCTION-GRADE SOLAR PHYSICS ENGINE — ENGINEERING EDITION
-// ============================================================
-//
-// v3.0 Bug Fixes vs v2.0:
-//
-//   FIX 1 — computeBankCapacity: Now reads BatterySpec.wiring field
-//     ("series" | "parallel") explicitly. Falls back to voltage heuristic
-//     only when wiring is omitted. This makes 12V-in-series banks
-//     (2 × 12V/200Ah → 24V/200Ah) unambiguous and prevents the multi-spec
-//     parallel-string Ah summation error.
-//
-//   FIX 2 — diversityFactor: Now uses extraction.appliances.length
-//     (count of distinct load *types*) for threshold evaluation instead
-//     of total unit count. Two AC units are exactly what diversity factor
-//     was designed to account for; using unit count masked this.
-//
-//   FIX 3 — Upgrade projection battery math: Series-wired banks require
-//     adding a full string (quantity units), not a single unit. The old
-//     `grossWh / quantity` formula was wrong for series banks. The engine
-//     now detects wiring topology and computes the correct string increment.
-//     Upgrade suggestions for series banks now read "+1 full battery string"
-//     and add the full correct Wh increment.
-//
-//   FIX 4 — computeReliability + scoreBatteryQuality:
-//     ScoreBreakdown.environment renamed → quality (matching v3.0 types).
-//     scoreBatteryQuality now distinguishes "tubular" from "lead-acid":
-//     tubular-plate batteries have meaningfully better partial-SoC tolerance
-//     and cycle life (500–800 vs 200–350 cycles) and deserve a higher score.
-//
 // ============================================================
 
 import type {
@@ -51,14 +23,14 @@ import { nanoid } from "nanoid";
 
 // ─── DUTY CYCLES PER APPLIANCE CATEGORY ─────────────────────
 const DUTY_CYCLES: Record<ApplianceCategory, number> = {
-  lighting:      0.85, // LEDs/bulbs: near-continuous when switched on
-  cooling:       0.40, // AC compressor average on-time; cycles aggressively
-  refrigeration: 0.33, // Fridge/freezer compressor ~1 cycle per 3 min at 35°C ambient
-  entertainment: 0.90, // TV + decoder: effectively continuous when in use
-  computing:     0.80, // Laptops & desktops cycle under variable CPU load
-  water_pump:    0.20, // Short intermittent bursts (filling tanks)
-  cooking:       0.12, // Microwave/blender: brief, high-intensity bursts
-  security:      0.95, // CCTV + alarm: near-continuous 24/7
+  lighting:      0.85, 
+  cooling:       0.40, 
+  refrigeration: 0.33, 
+  entertainment: 0.90, 
+  computing:     0.80, 
+  water_pump:    0.20, 
+  cooking:       0.12, 
+  security:      0.95, 
   other:         0.70,
 };
 
@@ -265,11 +237,11 @@ export function computeLoadProfile(
 // ─── RELIABILITY SCORING ENGINE v3.0 ────────────────────────
 function scoreLoadCoverage(inverterKva: number, continuousW: number): number {
   const ratio = (inverterKva * 1000) / (continuousW || 1);
-  if (ratio < 1.00) return 0;   // Under-sized — hard engineering fail
-  if (ratio < 1.15) return 45;  // Tight margin; load spikes will stress it
-  if (ratio < 1.50) return 88;  // Good 15–50% headroom
-  if (ratio < 2.50) return 100; // Excellent headroom
-  return 80;                    // Over-sized (inefficient at partial load)
+  if (ratio < 1.00) return 0;   
+  if (ratio < 1.15) return 45;  
+  if (ratio < 1.50) return 88;  
+  if (ratio < 2.50) return 100; 
+  return 80;                    
 }
 
 function scoreBatteryAutonomy(usableWh: number, dailyWh: number): number {
@@ -316,7 +288,7 @@ function scoreBatteryQuality(batteries: SolarPackage["batteries"]): number {
   return 48; // lead-acid (flat-plate flooded)
 }
 
-function computeReliability(scores: ScoreBreakdown): number {
+function computeReliability(scores: ScoreBreakdown, acRuntimeHours?: number | null): number {
   const { load, battery, solar, surge, quality } = scores;
   let base =
     0.20 * load +
@@ -329,7 +301,17 @@ function computeReliability(scores: ScoreBreakdown): number {
   if (surge < 35)   base *= 0.60;
   if (load < 40)    base *= 0.70;
 
+  if (acRuntimeHours !== undefined && acRuntimeHours !== null && acRuntimeHours < 4.0) {
+      base *= 0.85; 
+  }
+
   return Math.round(Math.min(100, Math.max(5, base)));
+}
+
+function assignTierLabel(score: number, pos: number, highCount: number): string {
+  if (score < 60) return "🟠 Low Reliability (Conditional)";
+  if (score >= 82) return (pos === 0 && highCount > 1) ? "🟡 Daily Reliable" : "🔵 High Reliability";
+  return "🟡 Conditionally Reliable";
 }
 
 // ─── 2: BUILD QUOTE OPTIONS ENGINE ──────────────────────────
@@ -340,9 +322,27 @@ export function buildQuoteOptions(
 ): RankedPackage[] {
   const pshRecord = getPSH(location);
 
-  // ─── DATA INJECTION FOR UI ──────────────────────────────────
-  const acTotalRatedW = extraction.appliances.filter(a => a.category === "cooling").reduce((sum, a) => sum + a.unitWatts * a.quantity, 0);
+  // ─── UNIFIED NIGHT LOAD CALCULATION ────────────────────────
+  let nightLoadLightW = 0;
+  let acTotalRatedW = 0;
+  
+  for (const app of extraction.appliances) {
+    if (app.category === "cooling") {
+      acTotalRatedW += app.unitWatts * app.quantity;
+    } else if (app.category === "refrigeration") {
+      nightLoadLightW += app.unitWatts * app.quantity * DUTY_CYCLES.refrigeration * (HEAT_PENALTY.refrigeration || 1.0);
+    } else if (["lighting", "entertainment", "security"].includes(app.category)) {
+      nightLoadLightW += app.unitWatts * app.quantity * 0.40; // Assumed intermittent night use
+    } else if (app.category === "computing") {
+      nightLoadLightW += app.unitWatts * app.quantity * 0.20; 
+    }
+  }
+  
+  // Safety fallback if no specific light loads found
+  if (nightLoadLightW < 50) nightLoadLightW = profile.continuousLoad * 0.20; 
+  
   const acEffectiveW = acTotalRatedW * DUTY_CYCLES.cooling * (HEAT_PENALTY.cooling || 1.0);
+  const nightLoadHeavyW = nightLoadLightW + acEffectiveW;
 
   // ─── PACKAGE FILTERING ────────────────────────────────────
   let safePackages = SOLAR_PACKAGES.filter((pkg) => {
@@ -369,11 +369,12 @@ export function buildQuoteOptions(
 
   safePackages.sort((a, b) => (a.basePrice ?? 0) - (b.basePrice ?? 0));
 
-  // Optimization window: avoid massively over-sized inverters.
   let optimizedPackages = safePackages.filter((pkg) => {
     const inverterW = (pkg.inverter?.kva ?? 1) * 1000;
-    return inverterW <= profile.surgeLoad * 4;
+    const usableWh = getUsableWh(pkg.batteries);
+    return inverterW <= profile.surgeLoad * 3.5 && usableWh <= profile.dailyEnergyWh * 4.0;
   });
+
   if (optimizedPackages.length === 0 && safePackages.length > 0) {
     optimizedPackages = safePackages;
   }
@@ -395,12 +396,6 @@ export function buildQuoteOptions(
   if (optimizedPackages.length > 2)
     selectedOptions.push(optimizedPackages[Math.min(optimizedPackages.length - 1, 3)]);
   const uniqueOptions = [...new Set(selectedOptions)];
-
-  const tierLabels: RankedPackage["tierLabel"][] = [
-    "🟢 Survival Tier",
-    "🟡 Conditionally Reliable",
-    "🔵 Full Comfort Tier",
-  ];
 
   return uniqueOptions.map((pkg, index) => {
     const items: LineItem[] = [];
@@ -479,17 +474,29 @@ export function buildQuoteOptions(
     const rainyDailyGenWh = totalPanelWatts * pshRecord.rainy * SYSTEM_DERATE.combined;
     const dryDailyGenWh   = totalPanelWatts * pshRecord.dry   * SYSTEM_DERATE.combined;
 
-    const baseRuntime         = usableWh / (profile.continuousLoad || 1);
-    const estimatedRuntimeRange = `${Math.max(1, Math.floor(baseRuntime * 0.80))}–${Math.ceil(baseRuntime * 1.05)}`;
+    // ─── UNIFIED RUNTIME MATH ──────────────────────────────
+    const runtimeLightHrs = usableWh / nightLoadLightW;
+    const estimatedRuntimeLight = `${Math.max(1, Math.floor(runtimeLightHrs * 0.85))}–${Math.ceil(runtimeLightHrs * 1.15)}`;
     
-    // NEW UI FIELDS
+    let estimatedRuntimeHeavy: string | null = null;
+    let acRuntimeHours: number | null = null;
+    if (acEffectiveW > 0) {
+      acRuntimeHours = Math.round((usableWh / acEffectiveW) * 10) / 10;
+      const runtimeHeavyHrs = usableWh / nightLoadHeavyW;
+      estimatedRuntimeHeavy = `${Math.max(1, Math.floor(runtimeHeavyHrs * 0.85))}–${Math.ceil(runtimeHeavyHrs * 1.15)}`;
+    }
+    const estimatedRuntimeRange = estimatedRuntimeLight; // Fallback field
+    
     const rawBackupDays = usableWh / (profile.dailyEnergyWh || 1);
+    let backupCapacityDays = `~${rawBackupDays.toFixed(1)} days`;
+    if (rawBackupDays < 1.0) backupCapacityDays += " (cannot handle 1 full cloudy day)";
+    else if (rawBackupDays > 1.5) backupCapacityDays += " (resilient)";
+    else backupCapacityDays += " (standard overnight coverage)";
+
     const overProvisioningRatio = Math.round(rawBackupDays * 10) / 10;
     const isOverProvisioned = overProvisioningRatio > 5.0 && !isPortable;
-    const backupCapacityDays    = `~${rawBackupDays.toFixed(1)} days`;
 
-    const acRuntimeHours: number | null = acEffectiveW > 0 ? Math.round((usableWh / acEffectiveW) * 10) / 10 : null;
-
+    // ─── SCORING ───────────────────────────────────────────────
     const loadScore    = scoreLoadCoverage(pkg.inverter.kva, profile.continuousLoad);
     const batteryScore = scoreBatteryAutonomy(usableWh, profile.dailyEnergyWh);
     const solarScore   = scoreSolarCoverage(avgDailyGenWh, profile.dailyEnergyWh, isPortable);
@@ -503,7 +510,7 @@ export function buildQuoteOptions(
       surge:   Math.round(surgeScore),
       quality: Math.round(qualityScore),
     };
-    const reliabilityScore = computeReliability(scoreBreakdown);
+    const reliabilityScore = computeReliability(scoreBreakdown, acRuntimeHours);
 
     let systemLimitedBy = "Optimally Balanced";
     if (reliabilityScore < 85) {
@@ -512,19 +519,21 @@ export function buildQuoteOptions(
       else systemLimitedBy = "Inverter Peak Limit";
     }
 
+    // ─── AC COMPATIBILITY ────────────────────────────────────
     let acCompatibilityText = "❄️ No ACs detected in load.";
     if (acRuntimeHours !== null) {
-      if (acRuntimeHours >= 8.0) acCompatibilityText = `❄️ AC Supported: Full overnight runtime (~${acRuntimeHours.toFixed(1)} hrs capacity)`;
-      else if (acRuntimeHours >= 3.0) acCompatibilityText = `❄️ AC Supported: Limited daytime/evening use (~${acRuntimeHours.toFixed(1)} hrs capacity)`;
-      else acCompatibilityText = `❌ AC Not Recommended: Battery will drain rapidly (< 3 hrs capacity)`;
+      if (acRuntimeHours >= 10.0) acCompatibilityText = `❄️ AC Supported: Full overnight runtime (~${acRuntimeHours.toFixed(1)} hrs capacity)`;
+      else if (acRuntimeHours >= 4.0) acCompatibilityText = `❄️ AC Supported: Limited evening use (~${acRuntimeHours.toFixed(1)} hrs capacity)`;
+      else acCompatibilityText = `❌ AC Not Recommended: Battery will drain rapidly (< 4 hrs capacity)`;
     }
 
+    // ─── SEASONAL ANALYSIS ─────────────────────────────────────
     const rainySolarScore = scoreSolarCoverage(rainyDailyGenWh, profile.dailyEnergyWh, isPortable);
     const drySolarScore   = scoreSolarCoverage(dryDailyGenWh,   profile.dailyEnergyWh, isPortable);
 
     const seasonalAnalysis: SeasonalAnalysis = {
-      drySeasonReliability:   computeReliability({ ...scoreBreakdown, solar: Math.round(drySolarScore) }),
-      rainySeasonReliability: computeReliability({ ...scoreBreakdown, solar: Math.round(rainySolarScore) }),
+      drySeasonReliability:   computeReliability({ ...scoreBreakdown, solar: Math.round(drySolarScore) }, acRuntimeHours),
+      rainySeasonReliability: computeReliability({ ...scoreBreakdown, solar: Math.round(rainySolarScore) }, acRuntimeHours),
       worstCasePSH:           pshRecord.rainy,
       worstCaseDailyGenWh:    Math.round(rainyDailyGenWh),
     };
@@ -535,10 +544,11 @@ export function buildQuoteOptions(
         `⛈️ SEASONAL GAP [${pkg.name}]: Reliability drops from ${reliabilityScore}% (annual avg) ` +
         `to ~${seasonalAnalysis.rainySeasonReliability}% in rainy season ` +
         `(April–Oct, ${pshRecord.rainy} PSH vs ${pshRecord.avg} avg in ${location}). ` +
-        `Consider adding 2 extra panels to close this gap.`
+        `Consider adding extra panels to close this gap.`
       );
     }
 
+    // ─── HONEST COPYWRITING & WEAK SOLAR DETECTION ───────────
     let consequenceText: string;
     let realityCheckText: string;
     let bestForText: string;
@@ -546,19 +556,22 @@ export function buildQuoteOptions(
 
     if (reliabilityScore >= 85) {
       consequenceText  = "Provides excellent autonomy and strong resilience against multi-day outages and extended rainy periods.";
-      realityCheckText = "Freezer and ACs will run reliably overnight regardless of grid availability.";
+      realityCheckText = acRuntimeHours !== null && acRuntimeHours < 8.0 
+        ? "⚠️ Limited AC Runtime. Other appliances run perfectly, but AC must be managed." 
+        : "Supports overnight AC usage depending on runtime and battery state.";
       bestForText      = "24/7 off-grid independence, all appliances including heavy cyclic loads";
       notIdealForText  = "Those who want a budget-first, install-fast setup";
-    } else if (reliabilityScore >= 70) {
-      consequenceText  = "Reliable for standard daily cycles, but may show strain during multi-day cloudy weather.";
-      realityCheckText = `Strong daily performer. Rainy season score (~${seasonalAnalysis.rainySeasonReliability}%) suggests adding extra panels would provide full year-round independence.`;
-      bestForText      = "Full house backup for 90%+ of the year";
-      notIdealForText  = "Zero grid dependency during the peak of rainy season";
-    } else if (reliabilityScore >= 50) {
-      consequenceText  = "Reliable for daytime use and light overnight load. Heavy cyclic appliances may exhaust the battery before morning on high-demand days.";
-      realityCheckText = "Freezers and ACs may not complete full overnight cycles during rainy season. Monitor battery levels during April–October.";
-      bestForText      = "Standard household essentials with moderated overnight load";
-      notIdealForText  = "Running multiple ACs or large freezers overnight in rainy season";
+    } else if (reliabilityScore >= 65) {
+      // THE UNDERPOWERED SOLAR INTERCEPTOR
+      if (scoreBreakdown.solar < 50 && !isPortable) {
+         consequenceText = "Solar array is significantly undersized for your demand. Will struggle to recharge without grid/generator support.";
+         realityCheckText = "Battery is capable, but panels won't fully recharge it the next day, especially during the rainy season.";
+      } else {
+         consequenceText = "Reliable for standard daily cycles, vulnerable to extended bad weather.";
+         realityCheckText = "Heavy appliances may drain the system if run simultaneously at night.";
+      }
+      bestForText      = "Standard household daily backup";
+      notIdealForText  = "Heavy simultaneous loads at night without grid assist";
     } else {
       consequenceText  = "This system is best treated as daytime-only backup. It will struggle to sustain overnight load on a fully loaded day.";
       realityCheckText = "Heavy cyclic appliances (freezers, ACs) will likely exhaust this battery before morning. Not suitable for overnight compressor operation.";
@@ -566,37 +579,49 @@ export function buildQuoteOptions(
       notIdealForText  = "Overnight operation of freezers, ACs, or water pumps";
     }
 
+    // ─── UPGRADE PROJECTIONS ───────────────────────────────────
     const upgradeProjections: UpgradeProjection[] = [];
     if (!isPortable && reliabilityScore < 95) {
 
       const newPanelWatts = totalPanelWatts + 800;
       const newGenWh      = newPanelWatts * pshRecord.avg * SYSTEM_DERATE.combined;
       const newSolarScore = scoreSolarCoverage(newGenWh, profile.dailyEnergyWh, false);
-      const panelRel      = computeReliability({ ...scoreBreakdown, solar: Math.round(newSolarScore) });
-      if (panelRel > reliabilityScore + 2) {
-        upgradeProjections.push({ icon: "☀️", action: "+2 panels (~800W)", projectedScore: panelRel, reasoning: "Improves charging and reduces cloudy day risk" });
-      }
-
+      const panelRel      = computeReliability({ ...scoreBreakdown, solar: Math.round(newSolarScore) }, acRuntimeHours);
+      
       const { addedWh, upgradeLabel } = computeUpgradeStringWh(pkg.batteries);
+      let battRel = reliabilityScore;
+
       if (addedWh > 0) {
         const newUsableWh  = (grossWh + addedWh) * dod * 0.92;
         const newBattScore = scoreBatteryAutonomy(newUsableWh, profile.dailyEnergyWh);
-        const battRel      = computeReliability({ ...scoreBreakdown, battery: Math.round(newBattScore) });
+        battRel = computeReliability({ ...scoreBreakdown, battery: Math.round(newBattScore) }, acRuntimeHours !== null ? (newUsableWh/(nightLoadHeavyW||1)) : null);
+        
         if (battRel > reliabilityScore + 2) {
           upgradeProjections.push({ icon: "🔋", action: upgradeLabel, projectedScore: battRel, reasoning: "Improves overnight performance directly" });
         }
+      }
+
+      if (panelRel > reliabilityScore + 2) {
+        upgradeProjections.push({ icon: "☀️", action: "+2 panels (~800W)", projectedScore: panelRel, reasoning: scoreBreakdown.battery < 80 ? "Improves charging but still battery-limited" : "Accelerates daily system recovery" });
+      }
+      
+      if (battRel > reliabilityScore && panelRel > reliabilityScore) {
+          const comboRelScore = computeReliability({ ...scoreBreakdown, battery: Math.round(scoreBatteryAutonomy((grossWh + addedWh) * dod * 0.92, profile.dailyEnergyWh)), solar: Math.round(newSolarScore) }, acRuntimeHours !== null ? (((grossWh + addedWh) * dod * 0.92)/(nightLoadHeavyW||1)) : null);
+          upgradeProjections.push({ icon: "🚀", action: `+1 battery string & 2 panels`, projectedScore: Math.min(100, comboRelScore), reasoning: "Full stability, handles cloudy days" });
       }
     }
 
     return {
       tierLabel: uniqueOptions.length === 1
         ? "🟡 Conditionally Reliable"
-        : tierLabels[index] ?? "Alternative Option",
+        : assignTierLabel(reliabilityScore, index, 0),
       package: pkg,
       lineItems: items,
       totalPriceNGN,
       monthlyPaymentOption,
       estimatedRuntimeRange,
+      estimatedRuntimeLight,
+      estimatedRuntimeHeavy,
       backupCapacityDays,
       reliabilityScore,
       scoreBreakdown,
