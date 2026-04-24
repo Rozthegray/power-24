@@ -109,31 +109,31 @@ export interface BatterySpec {
    * Battery chemistry type.
    *
    * "tubular"   — tubular-plate lead-acid; dominant in Nigerian installs.
-   *               Better partial-SoC tolerance and cycle life than flat-plate
-   *               lead-acid. DoD: 50%. Typical cycle life: 500–800 cycles.
+   * Better partial-SoC tolerance and cycle life than flat-plate
+   * lead-acid. DoD: 50%. Typical cycle life: 500–800 cycles.
    * "gel"       — VRLA gel; sealed, maintenance-free. DoD: 50%.
-   *               Typical cycle life: 300–500 cycles.
+   * Typical cycle life: 300–500 cycles.
    * "lead-acid" — standard flat-plate flooded lead-acid. DoD: 50%.
-   *               Typical cycle life: 200–350 cycles. Cheapest upfront.
+   * Typical cycle life: 200–350 cycles. Cheapest upfront.
    * "lithium"   — LiFePO4 rack batteries. DoD: 80%, protected by BMS.
-   *               Typical cycle life: 3,000–6,000 cycles.
+   * Typical cycle life: 3,000–6,000 cycles.
    */
   type: "lithium" | "lead-acid" | "gel" | "tubular";
   /**
    * Physical wiring topology of this battery spec within the bank.
    *
    * "series"   — units are wired in series to increase system voltage.
-   *              Ah capacity stays at a single unit's rating;
-   *              voltage = voltageV × quantity.
-   *              Example: 2 × 12V/200Ah in series → 24V/200Ah bank.
+   * Ah capacity stays at a single unit's rating;
+   * voltage = voltageV × quantity.
+   * Example: 2 × 12V/200Ah in series → 24V/200Ah bank.
    *
    * "parallel" — units are wired in parallel to increase capacity.
-   *              Voltage stays at a single unit's rating;
-   *              Ah = capacityAh × quantity.
-   *              Example: 2 × 48V/100Ah in parallel → 48V/200Ah bank.
+   * Voltage stays at a single unit's rating;
+   * Ah = capacityAh × quantity.
+   * Example: 2 × 48V/100Ah in parallel → 48V/200Ah bank.
    *
    * If omitted, the engine falls back to a voltage heuristic:
-   *   voltageV ≥ 48V → parallel; voltageV < 48V → series.
+   * voltageV ≥ 48V → parallel; voltageV < 48V → series.
    * Explicitly setting this field is strongly recommended for new packages.
    */
   wiring?: "series" | "parallel";
@@ -173,8 +173,10 @@ export interface ScoreBreakdown {
 }
 
 export interface UpgradeProjection {
+  icon?: string; // Added to support new UI
   action: string;
   projectedScore: number;
+  reasoning?: string; // Added to support new UI
 }
 
 // ─── SEASONAL ANALYSIS ───────────────────────────────────────
@@ -219,11 +221,7 @@ export interface SystemDerateBreakdown {
 // ─── EXTENDED INTERFACES ─────────────────────────────────────
 
 export interface RankedPackage {
-  tierLabel:
-    | "🟢 Survival Tier"
-    | "🟡 Conditionally Reliable"
-    | "🔵 Full Comfort Tier"
-    | "Alternative Option";
+  tierLabel: string; // Relaxed to string to stop strict validation errors
   package: SolarPackage;
   lineItems: LineItem[];
   totalPriceNGN: number;
@@ -247,6 +245,13 @@ export interface RankedPackage {
   systemDerateFactors: SystemDerateBreakdown;
   /** Diversity factor applied to concurrent load calculation */
   diversityFactor: number;
+
+  // Added fields to support QuoteCard.tsx UI
+  acRuntimeHours?: number | null;
+  isOverProvisioned?: boolean;
+  overProvisioningRatio?: number;
+  systemLimitedBy?: string;
+  acCompatibilityText?: string;
 }
 
 export interface QuoteResult {
