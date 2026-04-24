@@ -510,7 +510,7 @@ function SpecsTab({ quote, currentOption, colors }: TabProps) {
         <SpecRow label="Displayed Demand" value={`${(profile.bufferedEnergyWh / 1000).toFixed(2)} kWh (15% margin)`} />
         <SpecRow label="Diversity Factor" value={`${Math.round((profile.diversityFactor ?? 1) * 100)}%`} />
         <SpecRow label="Target Backup"    value={`${profile.autonomyHours ?? 8} hours`} />
-        {currentOption.overProvisioningRatio > 1 && (
+        {(currentOption.overProvisioningRatio ?? 0) > 1 && (
           <SpecRow
             label="Provisioning Ratio"
             value={`${currentOption.overProvisioningRatio}× daily demand${currentOption.isOverProvisioned ? " ⚠ high" : ""}`}
