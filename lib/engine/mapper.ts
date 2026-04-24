@@ -76,19 +76,35 @@ function getPSH(location?: string): PSHRecord {
   return PSH_DATABASE[loc] ?? DEFAULT_PSH;
 }
 
+// ─── PRICE & HARDWARE HELPERS ───────────────────────────────
 function getInverterPrice(kva: number): number {
-  const PRICES: Record<number, number> = { 1: 120_000, 2: 185_000, 3: 275_000, 5: 480_000, 10: 950_000, 15: 1_650_000 };
+  // Live market averages for hybrid inverters
+  const PRICES: Record<number, number> = { 
+    1: 140_000, 
+    2: 250_000, 
+    3: 340_000, 
+    5: 500_000, 
+    10: 1_100_000, 
+    15: 1_800_000 
+  };
   const keys = Object.keys(PRICES).map(Number).sort((a, b) => a - b);
   for (const key of keys) if (kva <= key) return PRICES[key];
   return PRICES[keys[keys.length - 1]];
 }
+
 function getBatteryPrice(type: string, capacityAh: number, voltageV: number): number {
-  if (type === "lithium") return capacityAh * voltageV * 7.5;
-  if (type === "gel")     return capacityAh * 12 * 3.5;
-  if (type === "tubular") return capacityAh * 12 * 3.0; 
-  return capacityAh * 12 * 2.8; 
+  const wh = capacityAh * voltageV;
+  // Extracted from live Jiji market scrape
+  if (type === "lithium") return wh * 190; // ~₦950k for 5kWh (48V 100Ah)
+  if (type === "tubular") return wh * 90;  // ~₦216k for 12V 200Ah
+  if (type === "gel")     return wh * 100; // ~₦240k for 12V 200Ah
+  return wh * 85; // Standard flooded lead-acid
 }
-function getPanelPrice(watts: number): number { return Math.round(watts * 550); }
+
+function getPanelPrice(watts: number): number { 
+  // Market correction: Panels have dropped to ~₦200-₦210/W
+  return Math.round(watts * 205); 
+}
 
 function getBatteryWiring(spec: BatterySpec): "series" | "parallel" {
   if (spec.wiring) return spec.wiring;
