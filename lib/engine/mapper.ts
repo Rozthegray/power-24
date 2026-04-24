@@ -1,5 +1,5 @@
 // ============================================================
-// lib/engine/mapper.ts  v8.0 (The Unified Physics Engine)
+// lib/engine/mapper.ts  v8.1 (Grounded Reliability Fix)
 // PRODUCTION-GRADE SOLAR PHYSICS ENGINE — ENGINEERING EDITION
 // ============================================================
 
@@ -22,7 +22,6 @@ import { SOLAR_PACKAGES } from "@/lib/data/packages";
 import { getInstallersByLocation } from "@/lib/data/installers";
 import { nanoid } from "nanoid";
 
-// ─── DUTY CYCLES PER APPLIANCE CATEGORY ─────────────────────
 const DUTY_CYCLES: Record<ApplianceCategory, number> = {
   lighting:      0.85, 
   cooling:       0.40, 
@@ -51,7 +50,6 @@ SYSTEM_DERATE.combined = parseFloat(
   (SYSTEM_DERATE.wiring * SYSTEM_DERATE.mppt * SYSTEM_DERATE.temperature * SYSTEM_DERATE.soiling).toFixed(3)
 );
 
-// ─── SEASONAL PEAK SUN HOURS DATABASE ───────────────────────
 interface PSHRecord { dry: number; rainy: number; avg: number }
 const PSH_DATABASE: Record<string, PSHRecord> = {
   sokoto:           { dry: 6.8, rainy: 5.2, avg: 6.2 },
@@ -78,7 +76,6 @@ function getPSH(location?: string): PSHRecord {
   return PSH_DATABASE[loc] ?? DEFAULT_PSH;
 }
 
-// ─── PRICE & HARDWARE HELPERS ───────────────────────────────
 function getInverterPrice(kva: number): number {
   const PRICES: Record<number, number> = { 1: 120_000, 2: 185_000, 3: 275_000, 5: 480_000, 10: 950_000, 15: 1_650_000 };
   const keys = Object.keys(PRICES).map(Number).sort((a, b) => a - b);
@@ -139,7 +136,6 @@ function computeUpgradeStringWh(batteries: SolarPackage["batteries"]): { addedWh
   }
 }
 
-// ─── MASTER ENGINE RUNTIME HELPERS (NEW) ────────────────────
 export function calculateNightLoadW(appliances: DetectedAppliance[]): { lightW: number, acW: number } {
   let lightW = 0;
   let acW = 0;
@@ -161,10 +157,9 @@ export function calculateNightLoadW(appliances: DetectedAppliance[]): { lightW: 
 export function calculateRuntimeHours(usableWh: number, loadW: number): number {
   if (loadW <= 0) return 0;
   const rawHours = usableWh / loadW;
-  return rawHours * 0.85; // 0.85 Realism/Loss cap per Master Engine specs
+  return rawHours * 0.85; 
 }
 
-// ─── 1: LOAD PROFILE ENGINE ─────────────────────────────────
 export function computeLoadProfile(
   extraction: AIExtractionResult,
   location: string = "lagos"
@@ -202,7 +197,6 @@ export function computeLoadProfile(
   };
 }
 
-// ─── RELIABILITY SCORING ENGINE v3.0 ────────────────────────
 function scoreLoadCoverage(inverterKva: number, continuousW: number): number {
   const ratio = (inverterKva * 1000) / (continuousW || 1);
   if (ratio < 1.00) return 0;   
@@ -215,11 +209,11 @@ function scoreLoadCoverage(inverterKva: number, continuousW: number): number {
 function scoreBatteryAutonomy(usableWh: number, dailyWh: number): number {
   const days = usableWh / (dailyWh || 1);
   if (days < 0.30) return 10;
-  if (days < 0.50) return 28;
-  if (days < 0.80) return 50;
-  if (days < 1.00) return 65;
-  if (days < 1.50) return 80;
-  if (days < 2.00) return 90;
+  if (days < 0.50) return 25;
+  if (days < 0.80) return 40;
+  if (days < 1.00) return 55;
+  if (days < 1.50) return 70;
+  if (days < 2.00) return 85;
   return 97;
 }
 
@@ -227,10 +221,10 @@ function scoreSolarCoverage(dailyGenWh: number, dailyDemandWh: number, isPortabl
   if (isPortable) return 50; 
   const ratio = dailyGenWh / (dailyDemandWh || 1);
   if (ratio < 0.50) return 15;
-  if (ratio < 0.70) return 40;
-  if (ratio < 0.90) return 62;
-  if (ratio < 1.10) return 80;
-  if (ratio < 1.30) return 90;
+  if (ratio < 0.70) return 35;
+  if (ratio < 0.90) return 55;
+  if (ratio < 1.10) return 75;
+  if (ratio < 1.30) return 85;
   return 98;
 }
 
@@ -252,7 +246,8 @@ function scoreBatteryQuality(batteries: SolarPackage["batteries"]): number {
   return 48; 
 }
 
-// BLENDED MASTER RELIABILITY (40pts Autonomy + 40pts Solar + 20pts Inverter/Quality hardware matching)
+// ─── GROUNDED RELIABILITY SCORING ────────────────────────────
+// Replaces loose weighting with strict deterministic math.
 function computeReliability(
   scores: ScoreBreakdown, 
   usableWh: number, 
@@ -264,10 +259,12 @@ function computeReliability(
   const autonomyDays = usableWh / (dailyDemandWh || 1);
 
   let physicalScore = 0;
-  physicalScore += (solarRatio >= 1 ? 40 : solarRatio * 40);
-  physicalScore += (autonomyDays >= 2 ? 40 : (autonomyDays / 2) * 40);
+  // Math bounds: Requires 1.2x solar array generation to get max 35 points
+  physicalScore += Math.min(35, (solarRatio / 1.2) * 35);
+  // Math bounds: Requires 2.0 days of full autonomy to get max 45 points
+  physicalScore += Math.min(45, (autonomyDays / 2.0) * 45);
 
-  // Preserve existing hardware safety functions logic
+  // Preserve existing hardware safety bonus logic (max 20 points)
   const inverterBonus = (scores.load * 0.10) + (scores.surge * 0.05) + (scores.quality * 0.05);
   let base = physicalScore + inverterBonus;
 
@@ -288,7 +285,6 @@ function assignTierLabel(score: number, pos: number, highCount: number): string 
   return "🟡 Conditionally Reliable";
 }
 
-// ─── 2: BUILD QUOTE OPTIONS ENGINE ──────────────────────────
 export function buildQuoteOptions(
   profile: LoadProfile,
   extraction: AIExtractionResult,
@@ -296,12 +292,10 @@ export function buildQuoteOptions(
 ): RankedPackage[] {
   const pshRecord = getPSH(location);
 
-  // TRUE NIGHT LOAD CALCULATION
   const { lightW: baseLightW, acW: acEffectiveW } = calculateNightLoadW(extraction.appliances);
   const nightLoadLightW = baseLightW < 50 ? profile.continuousLoad * 0.20 : baseLightW;
   const nightLoadHeavyW = nightLoadLightW + acEffectiveW;
 
-  // ─── PACKAGE FILTERING ────────────────────────────────────
   let safePackages = SOLAR_PACKAGES.filter((pkg) => {
     if (!pkg) return false;
     const inverterUsableW = (pkg.inverter?.kva ?? 1) * 1000 * ((pkg.inverter?.efficiency ?? 90) / 100);
@@ -329,10 +323,7 @@ export function buildQuoteOptions(
     return inverterW <= profile.surgeLoad * 3.5 && usableWh <= profile.dailyEnergyWh * 4.0;
   });
 
-  if (optimizedPackages.length === 0 && safePackages.length > 0) {
-    optimizedPackages = safePackages;
-  }
-
+  if (optimizedPackages.length === 0 && safePackages.length > 0) optimizedPackages = safePackages;
   if (optimizedPackages.length === 0) {
     extraction.warnings.push(
       "CRITICAL: Your load requires a custom enterprise-scale installation. Showing largest available tier as a reference point only."
@@ -375,7 +366,6 @@ export function buildQuoteOptions(
     const rainyDailyGenWh = totalPanelWatts * pshRecord.rainy * SYSTEM_DERATE.combined;
     const dryDailyGenWh   = totalPanelWatts * pshRecord.dry   * SYSTEM_DERATE.combined;
 
-    // MASTER ENGINE: UNIFIED RUNTIME MATH
     const runtimeLightHrs = calculateRuntimeHours(usableWh, nightLoadLightW);
     const estimatedRuntimeLight = `${Math.max(1, Math.floor(runtimeLightHrs * 0.85))}–${Math.ceil(runtimeLightHrs * 1.15)}`;
     
@@ -386,7 +376,7 @@ export function buildQuoteOptions(
       const runtimeHeavyHrs = calculateRuntimeHours(usableWh, nightLoadHeavyW);
       estimatedRuntimeHeavy = `${Math.max(1, Math.floor(runtimeHeavyHrs * 0.85))}–${Math.ceil(runtimeHeavyHrs * 1.15)}`;
     }
-    const estimatedRuntimeRange = estimatedRuntimeLight; // Fallback compatibility
+    const estimatedRuntimeRange = estimatedRuntimeLight; 
     
     const rawBackupDays = usableWh / (profile.dailyEnergyWh || 1);
     let backupCapacityDays = `~${rawBackupDays.toFixed(1)} days`;
@@ -395,7 +385,7 @@ export function buildQuoteOptions(
     else backupCapacityDays += " (standard overnight coverage)";
 
     const overProvisioningRatio = Math.round(rawBackupDays * 10) / 10;
-    const isOverProvisioned = overProvisioningRatio > 5.0 && !isPortable;
+    const isOverProvisioned = overProvisioningRatio > 3.0 && !isPortable;
 
     const loadScore    = scoreLoadCoverage(pkg.inverter.kva, profile.continuousLoad);
     const batteryScore = scoreBatteryAutonomy(usableWh, profile.dailyEnergyWh);
@@ -408,6 +398,20 @@ export function buildQuoteOptions(
     };
     
     const reliabilityScore = computeReliability(scoreBreakdown, usableWh, profile.dailyEnergyWh, avgDailyGenWh, acRuntimeHours);
+
+    // ─── TRANSLATING SCORE TO ACTIONABLE TRUTH ─────────────────
+    let reliabilityActionableText = "";
+    if (reliabilityScore >= 95) {
+      reliabilityActionableText = "Luxury redundancy: System can sustain full load 100% of the time, even during extended outages.";
+    } else if (reliabilityScore >= 80) {
+      reliabilityActionableText = "Highly resilient: Capable of sustaining full load ~95% of the time year-round.";
+    } else if (reliabilityScore >= 65) {
+      reliabilityActionableText = "Solid daily performer: May require grid/generator assist 1–2 days a week during peak rainy season.";
+    } else if (reliabilityScore >= 50) {
+      reliabilityActionableText = "Conditional usage: Will likely deplete battery 3–4 nights per week if heavy loads are run continuously.";
+    } else {
+      reliabilityActionableText = "Fragile setup: Will fail to sustain overnight loads 5+ nights per week without grid assist.";
+    }
 
     let systemLimitedBy = "Optimally Balanced";
     if (reliabilityScore < 85) {
@@ -468,7 +472,6 @@ export function buildQuoteOptions(
 
     const upgradeProjections: UpgradeProjection[] = [];
     if (!isPortable && reliabilityScore < 95) {
-
       const newPanelWatts = totalPanelWatts + 800;
       const newGenWh      = newPanelWatts * pshRecord.avg * SYSTEM_DERATE.combined;
       const newSolarScore = scoreSolarCoverage(newGenWh, profile.dailyEnergyWh, false);
@@ -481,7 +484,6 @@ export function buildQuoteOptions(
         const newUsableWh  = (grossWh + addedWh) * dod * 0.92;
         const newBattScore = scoreBatteryAutonomy(newUsableWh, profile.dailyEnergyWh);
         battRel = computeReliability({ ...scoreBreakdown, battery: Math.round(newBattScore) }, newUsableWh, profile.dailyEnergyWh, avgDailyGenWh, acRuntimeHours !== null ? calculateRuntimeHours(newUsableWh, acEffectiveW) : null);
-        
         if (battRel > reliabilityScore + 2) {
           upgradeProjections.push({ icon: "🔋", action: upgradeLabel, projectedScore: battRel, reasoning: "Improves overnight performance directly" });
         }
@@ -499,7 +501,7 @@ export function buildQuoteOptions(
 
     return {
       tierLabel: uniqueOptions.length === 1 ? "🟡 Conditionally Reliable" : assignTierLabel(reliabilityScore, index, 0),
-      package: pkg, lineItems: items, totalPriceNGN, monthlyPaymentOption, estimatedRuntimeRange, estimatedRuntimeLight, estimatedRuntimeHeavy, backupCapacityDays, reliabilityScore, scoreBreakdown, consequenceText, realityCheckText, bestForText, notIdealForText, upgradeProjections, seasonalAnalysis, batteryUsableWh: Math.round(usableWh), batteryDOD: dod, systemDerateFactors: SYSTEM_DERATE, diversityFactor: profile.diversityFactor ?? 1.0, acRuntimeHours, isOverProvisioned, overProvisioningRatio, systemLimitedBy, acCompatibilityText
+      package: pkg, lineItems: items, totalPriceNGN, monthlyPaymentOption, estimatedRuntimeRange, estimatedRuntimeLight, estimatedRuntimeHeavy, backupCapacityDays, reliabilityScore, scoreBreakdown, consequenceText, realityCheckText, reliabilityActionableText, bestForText, notIdealForText, upgradeProjections, seasonalAnalysis, batteryUsableWh: Math.round(usableWh), batteryDOD: dod, systemDerateFactors: SYSTEM_DERATE, diversityFactor: profile.diversityFactor ?? 1.0, acRuntimeHours, isOverProvisioned, overProvisioningRatio, systemLimitedBy, acCompatibilityText
     };
   });
 }
