@@ -1,20 +1,6 @@
 // ============================================================
-// lib/types/index.ts  v3.0
+// lib/types/index.ts  v3.5 (Unified Engine Updates)
 // Central type registry for Power 24.
-//
-// v3.0 changes vs v2.0:
-//   • BatterySpec: added `wiring` field ("series" | "parallel") — removes
-//     the implicit voltage-based topology assumption from computeBankCapacity
-//     and makes upgrade-projection battery math unambiguous.
-//   • BatterySpec.type: added "tubular" — tubular-plate lead-acid is the
-//     dominant Nigerian battery technology and deserves its own chemistry
-//     entry (different cycle life, DoD, and quality score than flat-plate LA).
-//   • ScoreBreakdown: renamed `environment` → `quality` — the field was
-//     repurposed from an environmental score to a battery-quality score in v2;
-//     the old name was misleading and caused confusion in QuoteCard rendering.
-//   • LoadProfile: `bufferedEnergyWh` now documented — it is the 15% safety
-//     margin on daily demand used for customer-facing display; the engine
-//     uses `dailyEnergyWh` for all internal sizing math.
 // ============================================================
 
 export interface QuoteRequest {
@@ -31,6 +17,9 @@ export interface DetectedAppliance {
   hasSurge: boolean;
   surgeMultiplier: number;
   category: ApplianceCategory;
+  // Unified Engine Updates:
+  dutyCycle?: number; 
+  isNightLoad?: boolean;
 }
 
 export type ApplianceCategory =
@@ -58,22 +47,13 @@ export interface LoadProfile {
   continuousLoad: number;
   surgeLoad: number;
   dailyEnergyWh: number;
-  /**
-   * Daily energy demand with a 15% safety margin applied.
-   * Used for customer-facing display ("your home uses ~X kWh/day")
-   * to set conservative expectations. All internal engine calculations
-   * (battery sizing, solar sizing, scoring) use `dailyEnergyWh` instead.
-   */
   bufferedEnergyWh: number;
   peakSunHours: number;
   requiredPanelWatts: number;
   requiredBatteryAh: number;
   requiredInverterKva: number;
-  /** Concurrent load diversity factor applied (0.75–1.0 per IEC 60364) */
   diversityFactor: number;
-  /** Combined system derate factor (wiring × MPPT × temp × soiling ≈ 0.787) */
   systemDerate: number;
-  /** Target backup autonomy in hours used for battery sizing (default: 8h) */
   autonomyHours: number;
 }
 
@@ -105,13 +85,7 @@ export interface InverterSpec {
 export interface BatterySpec {
   brand: string;
   model: string;
-  /**
-   * Battery chemistry type.
-   */
   type: "lithium" | "lead-acid" | "gel" | "tubular";
-  /**
-   * Physical wiring topology of this battery spec within the bank.
-   */
   wiring?: "series" | "parallel";
   voltageV: number;
   capacityAh: number;
@@ -140,20 +114,15 @@ export interface ScoreBreakdown {
   battery: number;
   solar: number;
   surge: number;
-  /**
-   * Battery quality score: chemistry type + cycle life rating.
-   */
   quality: number;
 }
 
 export interface UpgradeProjection {
-  icon?: string; // Added to support new UI
+  icon?: string;
   action: string;
   projectedScore: number;
-  reasoning?: string; // Added to support new UI
+  reasoning?: string;
 }
-
-// ─── SEASONAL ANALYSIS ───────────────────────────────────────
 
 export interface SeasonalAnalysis {
   drySeasonReliability: number;
@@ -161,8 +130,6 @@ export interface SeasonalAnalysis {
   worstCasePSH: number;
   worstCaseDailyGenWh: number;
 }
-
-// ─── SYSTEM DERATE BREAKDOWN ─────────────────────────────────
 
 export interface SystemDerateBreakdown {
   wiring: number;
@@ -172,17 +139,14 @@ export interface SystemDerateBreakdown {
   combined: number;
 }
 
-// ─── EXTENDED INTERFACES ─────────────────────────────────────
-
 export interface RankedPackage {
-  tierLabel: string; // Relaxed to string to stop strict validation errors
+  tierLabel: string; 
   package: SolarPackage;
   lineItems: LineItem[];
   totalPriceNGN: number;
   monthlyPaymentOption: number;
   
-  // UNIFIED ENGINE UPDATES:
-  estimatedRuntimeRange: string; // Kept for fallback
+  estimatedRuntimeRange: string;
   estimatedRuntimeLight: string;
   estimatedRuntimeHeavy: string | null;
 
@@ -200,7 +164,6 @@ export interface RankedPackage {
   systemDerateFactors: SystemDerateBreakdown;
   diversityFactor: number;
 
-  // Added fields to support QuoteCard.tsx UI
   acRuntimeHours?: number | null;
   isOverProvisioned?: boolean;
   overProvisioningRatio?: number;
