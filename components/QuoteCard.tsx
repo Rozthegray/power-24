@@ -156,6 +156,10 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
               style={{ width: `${currentOption.reliabilityScore}%` }}
             />
           </div>
+          
+          <p className="text-xs font-bold text-slate-600 mb-3 bg-white p-2 rounded border border-slate-200 shadow-sm text-center">
+             {currentOption.reliabilityActionableText}
+          </p>
 
           <div className="grid grid-cols-5 gap-1.5 text-center mt-4 pt-4 border-t border-slate-200">
             {(["load", "battery", "solar", "surge", "quality"] as const).map((key, i) => {
@@ -340,12 +344,15 @@ function AcRuntimeCallout({ acRuntimeHours }: AcRuntimeCalloutProps) {
           ❄️ {headline}
         </p>
         <p className={`text-sm font-bold ${headColor}`}>
-          ~{acRuntimeHours.toFixed(1)} hrs AC-only runtime on a full charge
+          ~{acRuntimeHours.toFixed(1)} hrs AC-only runtime on a full charge*
         </p>
         <p className={`text-xs mt-1 font-medium ${textColor}`}>
           {isOvernightOk
             ? "Battery sustains overnight AC operation. Other loads (fridge, fans, lights) also draw from this — factor them into planning."
             : `That's less than a full overnight cycle. Other loads reduce this further. Add 1 battery unit to reach ≥ 8 hrs and achieve overnight AC independence.`}
+        </p>
+        <p className={`text-[10px] mt-2 italic opacity-80 ${headColor}`}>
+          *Actual runtime fluctuates based on compressor cycling, ambient temperature, and other active loads.
         </p>
       </div>
     </div>
@@ -401,7 +408,6 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         ))}
       </div>
 
-      {/* Battery chemistry callout */}
       {currentOption.batteryDOD != null && (
         <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-xs text-slate-500 font-medium">
           <span className="font-black text-slate-700">Battery chemistry: </span>
@@ -414,7 +420,6 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         </div>
       )}
 
-      {/* Includes list */}
       <div>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">What's Included</h3>
         <ul className="space-y-2.5">
@@ -457,7 +462,7 @@ function SpecsTab({ quote, currentOption, colors }: TabProps) {
 
       {currentOption.acRuntimeHours !== null && currentOption.acRuntimeHours !== undefined && (
         <SpecSection title="❄️ AC Runtime Analysis" color={colors.accent}>
-          <SpecRow label="AC-only battery runtime" value={`~${currentOption.acRuntimeHours.toFixed(1)} hrs`} />
+          <SpecRow label="AC-only battery runtime" value={`~${currentOption.acRuntimeHours.toFixed(1)} hrs*`} />
           <SpecRow
             label="Overnight AC capable?"
             value={currentOption.acRuntimeHours >= 8 ? "Yes (≥ 8 hrs)" : `No (${currentOption.acRuntimeHours.toFixed(1)} hrs < 8 hrs threshold)`}
