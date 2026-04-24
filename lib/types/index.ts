@@ -1,8 +1,20 @@
 // ============================================================
-// lib/types/index.ts  v2.0
+// lib/types/index.ts  v3.0
 // Central type registry for Power 24.
-// v2.0 additions: SeasonalAnalysis, SystemDerateBreakdown,
-//   extended LoadProfile and RankedPackage for engineering fields.
+//
+// v3.0 changes vs v2.0:
+//   • BatterySpec: added `wiring` field ("series" | "parallel") — removes
+//     the implicit voltage-based topology assumption from computeBankCapacity
+//     and makes upgrade-projection battery math unambiguous.
+//   • BatterySpec.type: added "tubular" — tubular-plate lead-acid is the
+//     dominant Nigerian battery technology and deserves its own chemistry
+//     entry (different cycle life, DoD, and quality score than flat-plate LA).
+//   • ScoreBreakdown: renamed `environment` → `quality` — the field was
+//     repurposed from an environmental score to a battery-quality score in v2;
+//     the old name was misleading and caused confusion in QuoteCard rendering.
+//   • LoadProfile: `bufferedEnergyWh` now documented — it is the 15% safety
+//     margin on daily demand used for customer-facing display; the engine
+//     uses `dailyEnergyWh` for all internal sizing math.
 // ============================================================
 
 export interface QuoteRequest {
@@ -22,8 +34,15 @@ export interface DetectedAppliance {
 }
 
 export type ApplianceCategory =
-  | "lighting" | "cooling" | "refrigeration" | "entertainment"
-  | "computing" | "water_pump" | "cooking" | "security" | "other";
+  | "lighting"
+  | "cooling"
+  | "refrigeration"
+  | "entertainment"
+  | "computing"
+  | "water_pump"
+  | "cooking"
+  | "security"
+  | "other";
 
 export interface AIExtractionResult {
   appliances: DetectedAppliance[];
@@ -39,17 +58,22 @@ export interface LoadProfile {
   continuousLoad: number;
   surgeLoad: number;
   dailyEnergyWh: number;
+  /**
+   * Daily energy demand with a 15% safety margin applied.
+   * Used for customer-facing display ("your home uses ~X kWh/day")
+   * to set conservative expectations. All internal engine calculations
+   * (battery sizing, solar sizing, scoring) use `dailyEnergyWh` instead.
+   */
   bufferedEnergyWh: number;
   peakSunHours: number;
   requiredPanelWatts: number;
   requiredBatteryAh: number;
   requiredInverterKva: number;
-  // v2.0 additions
   /** Concurrent load diversity factor applied (0.75–1.0 per IEC 60364) */
   diversityFactor: number;
-  /** Combined system derate factor (wiring × MPPT × temp × soiling ≈ 0.765) */
+  /** Combined system derate factor (wiring × MPPT × temp × soiling ≈ 0.787) */
   systemDerate: number;
-  /** Target backup autonomy in hours used for battery sizing */
+  /** Target backup autonomy in hours used for battery sizing (default: 8h) */
   autonomyHours: number;
 }
 
@@ -81,7 +105,38 @@ export interface InverterSpec {
 export interface BatterySpec {
   brand: string;
   model: string;
-  type: "lithium" | "lead-acid" | "gel";
+  /**
+   * Battery chemistry type.
+   *
+   * "tubular"   — tubular-plate lead-acid; dominant in Nigerian installs.
+   *               Better partial-SoC tolerance and cycle life than flat-plate
+   *               lead-acid. DoD: 50%. Typical cycle life: 500–800 cycles.
+   * "gel"       — VRLA gel; sealed, maintenance-free. DoD: 50%.
+   *               Typical cycle life: 300–500 cycles.
+   * "lead-acid" — standard flat-plate flooded lead-acid. DoD: 50%.
+   *               Typical cycle life: 200–350 cycles. Cheapest upfront.
+   * "lithium"   — LiFePO4 rack batteries. DoD: 80%, protected by BMS.
+   *               Typical cycle life: 3,000–6,000 cycles.
+   */
+  type: "lithium" | "lead-acid" | "gel" | "tubular";
+  /**
+   * Physical wiring topology of this battery spec within the bank.
+   *
+   * "series"   — units are wired in series to increase system voltage.
+   *              Ah capacity stays at a single unit's rating;
+   *              voltage = voltageV × quantity.
+   *              Example: 2 × 12V/200Ah in series → 24V/200Ah bank.
+   *
+   * "parallel" — units are wired in parallel to increase capacity.
+   *              Voltage stays at a single unit's rating;
+   *              Ah = capacityAh × quantity.
+   *              Example: 2 × 48V/100Ah in parallel → 48V/200Ah bank.
+   *
+   * If omitted, the engine falls back to a voltage heuristic:
+   *   voltageV ≥ 48V → parallel; voltageV < 48V → series.
+   * Explicitly setting this field is strongly recommended for new packages.
+   */
+  wiring?: "series" | "parallel";
   voltageV: number;
   capacityAh: number;
   quantity: number;
@@ -109,8 +164,12 @@ export interface ScoreBreakdown {
   battery: number;
   solar: number;
   surge: number;
-  /** Battery quality score: chemistry type + cycle life rating */
-  environment: number;
+  /**
+   * Battery quality score: chemistry type + cycle life rating.
+   * Formerly named "environment" in v2.0 — renamed for clarity.
+   * Higher is better: lithium > gel > tubular > lead-acid.
+   */
+  quality: number;
 }
 
 export interface UpgradeProjection {
@@ -118,7 +177,7 @@ export interface UpgradeProjection {
   projectedScore: number;
 }
 
-// ─── v2.0 NEW TYPES ──────────────────────────────────────────
+// ─── SEASONAL ANALYSIS ───────────────────────────────────────
 
 /**
  * Seasonal reliability analysis.
@@ -137,6 +196,8 @@ export interface SeasonalAnalysis {
   worstCaseDailyGenWh: number;
 }
 
+// ─── SYSTEM DERATE BREAKDOWN ─────────────────────────────────
+
 /**
  * Explicit system derate breakdown.
  * Every solar installation loses efficiency between the panel and the load.
@@ -151,14 +212,18 @@ export interface SystemDerateBreakdown {
   temperature: number;
   /** Dust and soiling losses — Harmattan season (~5%) */
   soiling: number;
-  /** Combined product of all derates above (~0.765) */
+  /** Combined product of all derates above (~0.787) */
   combined: number;
 }
 
 // ─── EXTENDED INTERFACES ─────────────────────────────────────
 
 export interface RankedPackage {
-  tierLabel: "🟢 Survival Tier" | "🟡 Conditionally Reliable" | "🔵 Full Comfort Tier" | "Alternative Option";
+  tierLabel:
+    | "🟢 Survival Tier"
+    | "🟡 Conditionally Reliable"
+    | "🔵 Full Comfort Tier"
+    | "Alternative Option";
   package: SolarPackage;
   lineItems: LineItem[];
   totalPriceNGN: number;
@@ -172,7 +237,6 @@ export interface RankedPackage {
   bestForText: string;
   notIdealForText: string;
   upgradeProjections: UpgradeProjection[];
-  // v2.0 additions
   /** Dry vs. rainy season reliability comparison */
   seasonalAnalysis: SeasonalAnalysis;
   /** Actual usable Wh after DoD and round-trip efficiency */
@@ -218,7 +282,10 @@ export interface QuoteError {
 }
 
 export type ErrorCode =
-  | "VALIDATION_ERROR" | "AI_PARSE_FAILURE" | "ENGINE_ERROR"
-  | "RATE_LIMITED" | "INTERNAL_ERROR";
+  | "VALIDATION_ERROR"
+  | "AI_PARSE_FAILURE"
+  | "ENGINE_ERROR"
+  | "RATE_LIMITED"
+  | "INTERNAL_ERROR";
 
 export type QuoteResponse = QuoteResult | QuoteError;
