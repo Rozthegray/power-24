@@ -1,11 +1,15 @@
 // ============================================================
-// lib/engine/mapper.ts  v6.0
-// THE HONEST INSTALLER EDITION
+// lib/engine/mapper.ts  v7.0 (The Honest Installer Hybrid)
+// PRODUCTION-GRADE SOLAR PHYSICS ENGINE — ENGINEERING EDITION
+// ============================================================
+//
+// This version explicitly preserves all v2.0 functions (Seasonal PSH, 
+// Diversity Factors, System Derates) while introducing strict clamps 
+// on Over-Provisioning and true Night Runtime / AC Compatibility math.
 // ============================================================
 
 import type {
   AIExtractionResult,
-  BatterySpec,
   LoadProfile,
   SolarPackage,
   LineItem,
@@ -21,107 +25,164 @@ import { SOLAR_PACKAGES } from "@/lib/data/packages";
 import { getInstallersByLocation } from "@/lib/data/installers";
 import { nanoid } from "nanoid";
 
+// ─── DUTY CYCLES PER APPLIANCE CATEGORY ─────────────────────
 const DUTY_CYCLES: Record<ApplianceCategory, number> = {
-  lighting: 0.85, cooling: 0.40, refrigeration: 0.33,
-  entertainment: 0.90, computing: 0.80, water_pump: 0.20,
-  cooking: 0.12, security: 0.95, other: 0.70,
+  lighting:      0.85, 
+  cooling:       0.40, 
+  refrigeration: 0.33, 
+  entertainment: 0.90, 
+  computing:     0.80, 
+  water_pump:    0.20, 
+  cooking:       0.12, 
+  security:      0.95, 
+  other:         0.70,
 };
 
+// ─── NIGERIA HEAT PENALTY ───────────────────────────────────
 const HEAT_PENALTY: Partial<Record<ApplianceCategory, number>> = {
-  cooling: 1.35, refrigeration: 1.25,
+  cooling:       1.35,
+  refrigeration: 1.25,
 };
 
+// ─── SYSTEM DERATE FACTORS ──────────────────────────────────
 export const SYSTEM_DERATE: SystemDerateBreakdown = {
-  wiring: 0.97, mppt: 0.97, temperature: 0.88, soiling: 0.95, combined: 0,
+  wiring:      0.97,
+  mppt:        0.97,
+  temperature: 0.88,
+  soiling:     0.95,
+  combined:    0,    
 };
-SYSTEM_DERATE.combined = parseFloat((0.97 * 0.97 * 0.88 * 0.95).toFixed(3));
+SYSTEM_DERATE.combined = parseFloat(
+  (SYSTEM_DERATE.wiring * SYSTEM_DERATE.mppt * SYSTEM_DERATE.temperature * SYSTEM_DERATE.soiling).toFixed(3)
+);
 
+// ─── SEASONAL PEAK SUN HOURS DATABASE ───────────────────────
 interface PSHRecord { dry: number; rainy: number; avg: number }
 const PSH_DATABASE: Record<string, PSHRecord> = {
-  lagos: { dry: 5.0, rainy: 3.8, avg: 4.4 },
-  abuja: { dry: 5.5, rainy: 4.5, avg: 5.0 },
-  ph: { dry: 4.5, rainy: 3.2, avg: 3.8 },
-  kano: { dry: 6.5, rainy: 5.0, avg: 6.0 },
+  sokoto:            { dry: 6.8, rainy: 5.2, avg: 6.2 },
+  kano:              { dry: 6.5, rainy: 5.0, avg: 6.0 },
+  maiduguri:         { dry: 6.5, rainy: 5.0, avg: 6.0 },
+  kaduna:            { dry: 6.0, rainy: 4.8, avg: 5.6 },
+  abuja:             { dry: 5.5, rainy: 4.5, avg: 5.0 },
+  ibadan:            { dry: 5.2, rainy: 4.0, avg: 4.6 },
+  enugu:             { dry: 5.0, rainy: 4.0, avg: 4.5 },
+  owerri:            { dry: 4.8, rainy: 3.5, avg: 4.2 },
+  benin:             { dry: 4.8, rainy: 3.6, avg: 4.2 },
+  warri:             { dry: 4.6, rainy: 3.4, avg: 4.0 },
+  asaba:             { dry: 4.8, rainy: 3.8, avg: 4.3 },
+  lagos:             { dry: 5.0, rainy: 3.8, avg: 4.4 },
+  ph:                { dry: 4.5, rainy: 3.2, avg: 3.8 },
+  "port harcourt":   { dry: 4.5, rainy: 3.2, avg: 3.8 },
+  calabar:           { dry: 4.3, rainy: 3.0, avg: 3.7 },
+  uyo:               { dry: 4.4, rainy: 3.1, avg: 3.8 },
 };
-const DEFAULT_PSH: PSHRecord = { dry: 5.0, rainy: 3.8, avg: 4.4 };
+const DEFAULT_PSH: PSHRecord = { dry: 5.0, rainy: 3.8, avg: 4.4 }; 
 
-function getPSH(loc?: string): PSHRecord {
-  return PSH_DATABASE[(loc ?? "lagos").toLowerCase().trim()] ?? DEFAULT_PSH;
+function getPSH(location?: string): PSHRecord {
+  const loc = (location || "lagos").toLowerCase().trim();
+  return PSH_DATABASE[loc] ?? DEFAULT_PSH;
 }
 
+// ─── PRICE HELPERS ──────────────────────────────────────────
 function getInverterPrice(kva: number): number {
-  const P: Record<number, number> = { 1: 120_000, 2: 185_000, 3: 275_000, 5: 480_000, 10: 950_000, 15: 1_650_000 };
-  const keys = Object.keys(P).map(Number).sort((a, b) => a - b);
-  for (const k of keys) if (kva <= k) return P[k];
-  return P[keys[keys.length - 1]];
+  const PRICES: Record<number, number> = {
+    1: 120_000, 2: 185_000, 3: 275_000,
+    5: 480_000, 10: 950_000, 15: 1_650_000
+  };
+  const keys = Object.keys(PRICES).map(Number).sort((a, b) => a - b);
+  for (const key of keys) if (kva <= key) return PRICES[key];
+  return PRICES[keys[keys.length - 1]];
 }
-
-function getBatteryPrice(type: string, ah: number, v: number): number {
-  if (type === "lithium") return ah * v * 7.5;
-  if (type === "tubular") return ah * 12 * 3.0;
-  if (type === "gel") return ah * 12 * 3.5;
-  return ah * 12 * 2.8;
+function getBatteryPrice(type: string, capacityAh: number, voltageV: number): number {
+  if (type === "lithium") return capacityAh * voltageV * 7.5;
+  if (type === "gel")     return capacityAh * 12 * 3.5;
+  return capacityAh * 12 * 2.8; 
 }
-
 function getPanelPrice(watts: number): number { return Math.round(watts * 550); }
 
-function getBatteryWiring(b: BatterySpec): "series" | "parallel" {
-  return b.wiring ?? (b.voltageV >= 48 ? "parallel" : "series");
-}
-
-export function computeBankCapacity(batteries: SolarPackage["batteries"]): { wh: number; systemVoltage: number } {
+// ─── BATTERY BANK CAPACITY MATH ─────────────────────────────
+function computeBankCapacity(batteries: SolarPackage["batteries"]): { wh: number; systemVoltage: number } {
   if (!batteries?.length) return { wh: 0, systemVoltage: 12 };
-  let totalWh = 0, sysV = 12;
-  for (const b of batteries) {
-    if (getBatteryWiring(b) === "parallel") {
-      totalWh += b.voltageV * b.capacityAh * b.quantity;
-      sysV = b.voltageV;
-    } else {
-      const sv = b.voltageV * b.quantity;
-      totalWh += sv * b.capacityAh;
-      sysV = sv;
-    }
-  }
-  return { wh: Math.round(totalWh), systemVoltage: sysV };
-}
+  const first = batteries[0];
 
-function getBatteryDOD(batteries: SolarPackage["batteries"]): number {
-  return (batteries?.[0]?.type ?? "lead-acid") === "lithium" ? 0.80 : 0.50;
+  if (first.voltageV >= 48) {
+    const totalAh = batteries.reduce((sum, b) => sum + b.capacityAh * b.quantity, 0);
+    return { wh: totalAh * 48, systemVoltage: 48 };
+  } else {
+    const bankVoltage = first.voltageV * first.quantity; 
+    const totalAh = batteries.reduce((sum, b) => sum + b.capacityAh, 0);
+    return { wh: totalAh * bankVoltage, systemVoltage: bankVoltage };
+  }
 }
 
 function getUsableWh(batteries: SolarPackage["batteries"]): number {
   const { wh } = computeBankCapacity(batteries);
-  return wh * getBatteryDOD(batteries) * 0.92; // 0.92 = round-trip efficiency
+  const dod = getBatteryDOD(batteries);
+  const roundTripEff = 0.92; 
+  return wh * dod * roundTripEff;
 }
 
+function getBatteryDOD(batteries: SolarPackage["batteries"]): number {
+  const type = batteries?.[0]?.type || "lead-acid";
+  return type === "lithium" ? 0.80 : 0.50;
+}
+
+// Helper to determine the exact Wh added by a single "upgrade" unit (respects wiring topology)
 function computeUpgradeStringWh(batteries: SolarPackage["batteries"]): { addedWh: number; upgradeLabel: string } {
   if (!batteries?.length) return { addedWh: 0, upgradeLabel: "+1 battery unit" };
   const first = batteries[0];
-  if (getBatteryWiring(first) === "parallel") {
+  const isParallel = first.wiring === "parallel" || first.voltageV >= 48;
+  
+  if (isParallel) {
     return { addedWh: first.voltageV * first.capacityAh, upgradeLabel: "+1 battery unit" };
   }
   const sw = first.voltageV * first.quantity * first.capacityAh;
   return { addedWh: sw, upgradeLabel: first.quantity === 1 ? "+1 battery unit" : `+${first.quantity} batteries (1 string)` };
 }
 
-export function computeLoadProfile(extraction: AIExtractionResult, location = "lagos"): LoadProfile {
+// ─── 1: LOAD PROFILE ENGINE ─────────────────────────────────
+export function computeLoadProfile(
+  extraction: AIExtractionResult,
+  location: string = "lagos"
+): LoadProfile {
   const psh = getPSH(location);
-  let rawContinuous = 0, largestSurge = 0, rawDailyWh = 0;
+
+  let rawContinuous = 0;     
+  let largestSurgeAddition = 0; 
+  let rawDailyWh = 0;
 
   for (const app of extraction.appliances) {
-    const watts = app.unitWatts * app.quantity;
-    rawContinuous += watts;
-    rawDailyWh += watts * (DUTY_CYCLES[app.category] ?? 0.70) * app.dailyHours * (HEAT_PENALTY[app.category] ?? 1.0);
+    const appWatts = app.unitWatts * app.quantity;
+    rawContinuous += appWatts;
+
+    const dutyCycle = DUTY_CYCLES[app.category] ?? 0.70;
+    const heatFactor = HEAT_PENALTY[app.category] ?? 1.0;
+
+    rawDailyWh += appWatts * dutyCycle * app.dailyHours * heatFactor;
+
     if (app.hasSurge && app.surgeMultiplier > 1) {
-      const s = app.unitWatts * (app.surgeMultiplier - 1);
-      if (s > largestSurge) largestSurge = s;
+      const singleUnitSurgeAddition = app.unitWatts * (app.surgeMultiplier - 1);
+      if (singleUnitSurgeAddition > largestSurgeAddition) {
+        largestSurgeAddition = singleUnitSurgeAddition;
+      }
     }
   }
 
-  const n = extraction.appliances.length;
-  const diversityFactor = n <= 2 ? 1.00 : n <= 5 ? 0.90 : n <= 9 ? 0.82 : 0.75;
+  const appCount = extraction.appliances.reduce((sum, a) => sum + a.quantity, 0);
+  const diversityFactor =
+    appCount <= 3 ? 1.00 :
+    appCount <= 6 ? 0.90 :
+    appCount <= 10 ? 0.82 : 0.75;
+
   const continuousLoad = Math.round(rawContinuous * diversityFactor);
-  const surgeLoad = Math.round((continuousLoad + largestSurge) * 1.20);
+  const surgeLoad = Math.round((continuousLoad + largestSurgeAddition) * 1.20);
+  const requiredPanelWatts = Math.ceil(rawDailyWh / (psh.rainy * SYSTEM_DERATE.combined));
+
+  const targetBackupWh = rawDailyWh * (8 / 24);
+  const requiredBatteryWh = targetBackupWh / (0.80 * 0.92);
+  const requiredBatteryAh = Math.ceil(requiredBatteryWh / 48);
+
+  const requiredInverterKva = Math.ceil(surgeLoad / 1000);
 
   return {
     continuousLoad,
@@ -129,85 +190,94 @@ export function computeLoadProfile(extraction: AIExtractionResult, location = "l
     dailyEnergyWh: Math.round(rawDailyWh),
     bufferedEnergyWh: Math.round(rawDailyWh * 1.15),
     peakSunHours: psh.avg,
-    requiredPanelWatts: Math.ceil(rawDailyWh / (psh.rainy * SYSTEM_DERATE.combined)),
-    requiredBatteryAh: Math.ceil((rawDailyWh * 8 / 24) / (0.80 * 0.92) / 48),
-    requiredInverterKva: Math.ceil(surgeLoad / 1000),
+    requiredPanelWatts,
+    requiredBatteryAh,
+    requiredInverterKva,
     diversityFactor,
     systemDerate: SYSTEM_DERATE.combined,
     autonomyHours: 8,
   };
 }
 
-function scoreLoadCoverage(kva: number, contW: number): number {
-  const r = (kva * 1000) / (contW || 1);
-  if (r < 1.00) return 0;
-  if (r < 1.15) return 45;
-  if (r < 1.50) return 88;
-  if (r < 2.50) return 100;
-  return 80;
+// ─── RELIABILITY SCORING ENGINE ────────────────────────────
+function scoreLoadCoverage(inverterKva: number, continuousW: number): number {
+  const ratio = (inverterKva * 1000) / (continuousW || 1);
+  if (ratio < 1.00) return 0;   
+  if (ratio < 1.15) return 45;  
+  if (ratio < 1.50) return 88;  
+  if (ratio < 2.50) return 100; 
+  return 80; 
 }
 
 function scoreBatteryAutonomy(usableWh: number, dailyWh: number): number {
-  const d = usableWh / (dailyWh || 1);
-  if (d < 0.30) return 10;
-  if (d < 0.50) return 28;
-  if (d < 0.80) return 50;
-  if (d < 1.00) return 65;
-  if (d < 1.50) return 80;
-  if (d < 2.00) return 90;
-  return 97;
+  const days = usableWh / (dailyWh || 1);
+  if (days < 0.30) return 10;  
+  if (days < 0.50) return 28;  
+  if (days < 0.80) return 50;  
+  if (days < 1.00) return 65;  
+  if (days < 1.50) return 80;  
+  if (days < 2.00) return 90;  
+  return 97;                   
 }
 
-function scoreSolarCoverage(genWh: number, demandWh: number, isPortable: boolean): number {
-  if (isPortable) return 50;
-  const r = genWh / (demandWh || 1);
-  if (r < 0.50) return 15;
-  if (r < 0.70) return 40;
-  if (r < 0.90) return 62;
-  if (r < 1.10) return 80;
-  if (r < 1.30) return 90;
-  return 98;
+function scoreSolarCoverage(dailyGenWh: number, dailyDemandWh: number, isPortable: boolean): number {
+  if (isPortable) return 50; 
+  const ratio = dailyGenWh / (dailyDemandWh || 1);
+  if (ratio < 0.50) return 15; 
+  if (ratio < 0.70) return 40; 
+  if (ratio < 0.90) return 62; 
+  if (ratio < 1.10) return 80; 
+  if (ratio < 1.30) return 90; 
+  return 98;                   
 }
 
-function scoreSurgeHeadroom(maxSurgeW: number, sysW: number): number {
-  const r = maxSurgeW / (sysW || 1);
-  if (r < 1.00) return 0;
-  if (r < 1.10) return 35;
-  if (r < 1.30) return 65;
-  if (r < 1.50) return 85;
+function scoreSurgeHeadroom(maxSurgeWatts: number, systemSurgeW: number): number {
+  const ratio = maxSurgeWatts / (systemSurgeW || 1);
+  if (ratio < 1.00) return 0;  
+  if (ratio < 1.10) return 35; 
+  if (ratio < 1.30) return 65; 
+  if (ratio < 1.50) return 85; 
   return 100;
 }
 
 function scoreBatteryQuality(batteries: SolarPackage["batteries"]): number {
   if (!batteries?.length) return 50;
-  const { type, cycleLife } = batteries[0];
+  const type = batteries[0].type;
+  const cycleLife = batteries[0].cycleLife;
   if (type === "lithium") return Math.min(97, 72 + Math.floor(cycleLife / 300));
-  if (type === "gel") return 62;
-  if (type === "tubular") return Math.min(72, 60 + Math.floor(cycleLife / 400));
-  return 48;
+  if (type === "gel")     return 62;
+  return 48; 
 }
 
-function computeReliability(scores: ScoreBreakdown, acRuntimeHours: number | null): number {
-  const { load, battery, solar, surge, quality } = scores;
+function computeReliability(scores: ScoreBreakdown, acRuntimeHours?: number | null): number {
+  const { load, battery, solar, surge, environment: quality } = scores;
   let base = 0.20 * load + 0.30 * battery + 0.25 * solar + 0.15 * surge + 0.10 * quality;
-  if (battery < 35) base *= 0.65;
-  if (surge < 35) base *= 0.60;
-  if (load < 40) base *= 0.70;
   
-  if (acRuntimeHours !== null && acRuntimeHours < 4.0) {
+  if (battery < 35) base *= 0.65;
+  if (surge < 35)   base *= 0.60;
+  if (load < 40)    base *= 0.70;
+  
+  // Strict penalty if AC exists but runtime is inadequate
+  if (acRuntimeHours !== undefined && acRuntimeHours !== null && acRuntimeHours < 4.0) {
       base *= 0.85; 
   }
+  
   return Math.round(Math.min(100, Math.max(5, base)));
 }
 
 function assignTierLabel(score: number, pos: number, highCount: number): RankedPackage["tierLabel"] {
-  if (score < 60) return "🟠 Low Reliability (Conditional)";
-  if (score >= 82) return (pos === 0 && highCount > 1) ? "🟡 Daily Reliable" : "🔵 High Reliability";
-  return "🟡 Conditionally Reliable";
+  if (score < 60) return "🟠 Low Reliability (Conditional)" as any;
+  if (score >= 82) return (pos === 0 && highCount > 1) ? "🟡 Daily Reliable" as any : "🔵 High Reliability" as any;
+  return "🟡 Conditionally Reliable" as any;
 }
 
-export function buildQuoteOptions(profile: LoadProfile, extraction: AIExtractionResult, location: string): RankedPackage[] {
-  const psh = getPSH(location);
+// ─── 2: BUILD QUOTE OPTIONS ENGINE ──────────────────────────
+export function buildQuoteOptions(
+  profile: LoadProfile,
+  extraction: AIExtractionResult,
+  location: string
+): RankedPackage[] {
+  const pshRecord = getPSH(location);
 
   // TRUE NIGHT LOAD CALCULATION
   let nightLoadW = 0;
@@ -215,69 +285,95 @@ export function buildQuoteOptions(profile: LoadProfile, extraction: AIExtraction
   for (const app of extraction.appliances) {
     if (app.category === "cooling") {
       acTotalRatedW += app.unitWatts * app.quantity;
-      nightLoadW += app.unitWatts * app.quantity * DUTY_CYCLES.cooling * HEAT_PENALTY.cooling!;
+      nightLoadW += app.unitWatts * app.quantity * DUTY_CYCLES.cooling * (HEAT_PENALTY.cooling || 1.0);
     } else if (app.category === "refrigeration") {
-      nightLoadW += app.unitWatts * app.quantity * DUTY_CYCLES.refrigeration * HEAT_PENALTY.refrigeration!;
+      nightLoadW += app.unitWatts * app.quantity * DUTY_CYCLES.refrigeration * (HEAT_PENALTY.refrigeration || 1.0);
     } else if (["lighting", "entertainment", "security"].includes(app.category)) {
-      nightLoadW += app.unitWatts * app.quantity * 0.50; // Assume 50% concurrent night use
+      nightLoadW += app.unitWatts * app.quantity * 0.50; // Assume ~50% concurrent night use
     }
   }
-  if (nightLoadW < 100) nightLoadW = profile.continuousLoad * 0.40; // Fallback if no specific night loads
-  const acEffectiveW = acTotalRatedW * DUTY_CYCLES.cooling * HEAT_PENALTY.cooling!;
+  if (nightLoadW < 100) nightLoadW = profile.continuousLoad * 0.40; 
+  const acEffectiveW = acTotalRatedW * DUTY_CYCLES.cooling * (HEAT_PENALTY.cooling || 1.0);
 
-  let safePackages = SOLAR_PACKAGES.filter(pkg => {
+  // ─── PACKAGE FILTERING ────────────────────────────────────
+  let safePackages = SOLAR_PACKAGES.filter((pkg) => {
     if (!pkg) return false;
-    const invW = (pkg.inverter?.kva ?? 1) * 1000 * ((pkg.inverter?.efficiency ?? 90) / 100);
-    const isP = (pkg.installationFee ?? 0) === 0;
-    if (profile.continuousLoad > invW) return false;
+    const inverterUsableW = (pkg.inverter?.kva || 1) * 1000 * ((pkg.inverter?.efficiency || 90) / 100);
+    const isPortable = pkg.installationFee === 0;
+
+    if (profile.continuousLoad > inverterUsableW) return false;
     if (profile.surgeLoad > pkg.maxSurgeWatts) return false;
-    if (getUsableWh(pkg.batteries) < profile.dailyEnergyWh * 0.50) return false;
+
+    const usableWh = getUsableWh(pkg.batteries);
+    if (usableWh < profile.dailyEnergyWh * 0.50) return false;
+
+    if (!isPortable) {
+      const totalPanelWatts = (pkg.panels || []).reduce((sum, p) => sum + p.watts * p.quantity, 0);
+      const rainySolarWh = totalPanelWatts * pshRecord.rainy * SYSTEM_DERATE.combined;
+      if (rainySolarWh < profile.dailyEnergyWh * 0.50) return false;
+    }
     return true;
   });
 
-  safePackages.sort((a, b) => (a.basePrice ?? 0) - (b.basePrice ?? 0));
+  safePackages.sort((a, b) => (a.basePrice || 0) - (b.basePrice || 0));
 
-  // SCALING CAP: Stop blindly suggesting 40kWh batteries for 4kWh loads
-  let opts = safePackages.filter(p => {
-      const invW = (p.inverter?.kva ?? 1) * 1000;
-      const usableWh = getUsableWh(p.batteries);
-      return invW <= profile.surgeLoad * 3.5 && usableWh <= profile.dailyEnergyWh * 4.0;
+  // THE OVER-PROVISIONING FILTER: Cap sizing so a 15KVA isn't matched to a 4kWh load
+  let optimizedPackages = safePackages.filter((pkg) => {
+    const inverterW = (pkg.inverter?.kva || 1) * 1000;
+    const usableWh = getUsableWh(pkg.batteries);
+    // Stops 8x over-provisioning: Max 3.5x Surge headroom & Max 4.0x Battery capacity
+    return inverterW <= profile.surgeLoad * 3.5 && usableWh <= profile.dailyEnergyWh * 4.0;
   });
-  if (opts.length === 0) opts = safePackages;
 
-  const sel: SolarPackage[] = [];
-  if (opts.length > 0) sel.push(opts[0]);
-  if (opts.length > 1) sel.push(opts[1]);
-  if (opts.length > 2) sel.push(opts[Math.min(3, opts.length - 1)]);
-  const uniq = [...new Set(sel)];
+  if (optimizedPackages.length === 0 && safePackages.length > 0) {
+    optimizedPackages = safePackages;
+  }
 
-  return uniq.map((pkg, index) => {
-    const isPortable = (pkg.installationFee ?? 0) === 0;
+  if (optimizedPackages.length === 0) {
+    extraction.warnings.push(
+      "CRITICAL: Your load requires a custom enterprise-scale installation. Showing largest available tier as a reference point only."
+    );
+    const fallback = SOLAR_PACKAGES.find((p) => p?.slug?.includes("oga")) ?? SOLAR_PACKAGES[SOLAR_PACKAGES.length - 1];
+    optimizedPackages = fallback ? [fallback] : [];
+  }
+
+  const selectedOptions: SolarPackage[] = [];
+  if (optimizedPackages.length > 0) selectedOptions.push(optimizedPackages[0]);
+  if (optimizedPackages.length > 1) selectedOptions.push(optimizedPackages[1]);
+  if (optimizedPackages.length > 2) selectedOptions.push(optimizedPackages[Math.min(optimizedPackages.length - 1, 3)]);
+  const uniqueOptions = [...new Set(selectedOptions)];
+
+  return uniqueOptions.map((pkg, index) => {
     const items: LineItem[] = [];
+    const safeInstFee = pkg.installationFee || 0;
+    const safeBasePrice = pkg.basePrice || 0;
+    const isPortable = safeInstFee === 0;
 
-    const safeInstFee = pkg.installationFee ?? 0;
-    const safeBasePrice = pkg.basePrice ?? 0;
+    // ─── LINE ITEMS ────────────────────────────────────────────
     if (isPortable) {
       items.push({ description: `${pkg.name} Portable Power Station`, category: "hardware", quantity: 1, unitPrice: safeBasePrice, total: safeBasePrice });
     } else {
-      items.push({ description: `${pkg.inverter.brand} ${pkg.inverter.kva}KVA Hybrid Inverter`, quantity: 1, category: "hardware", unitPrice: getInverterPrice(pkg.inverter.kva), total: getInverterPrice(pkg.inverter.kva) });
-      for (const b of pkg.batteries) { const u = getBatteryPrice(b.type, b.capacityAh, b.voltageV); items.push({ description: `${b.brand} ${b.capacityAh}Ah ${b.voltageV}V ${b.type.toUpperCase()}`, quantity: b.quantity, category: "hardware", unitPrice: u, total: u * b.quantity }); }
-      for (const p of pkg.panels) { const u = getPanelPrice(p.watts); items.push({ description: `${p.brand} ${p.watts}W Mono Panel`, quantity: p.quantity, category: "hardware", unitPrice: u, total: u * p.quantity }); }
-      const hwSub = items.reduce((s, i) => s + i.total, 0); const bos = Math.round(hwSub * 0.08);
-      items.push({ description: "Balance of System", quantity: 1, unitPrice: bos, total: bos, category: "hardware" });
-      items.push({ description: "Professional Installation", quantity: 1, unitPrice: safeInstFee, total: safeInstFee, category: "installation" });
+      items.push({ description: `${pkg.inverter.brand} ${pkg.inverter.kva}KVA Hybrid Inverter`, quantity: 1, unitPrice: getInverterPrice(pkg.inverter.kva), total: getInverterPrice(pkg.inverter.kva), category: "hardware" });
+      for (const b of pkg.batteries) { const unitPrice = getBatteryPrice(b.type, b.capacityAh, b.voltageV); items.push({ description: `${b.brand} ${b.capacityAh}Ah ${b.voltageV}V ${b.type.toUpperCase()} Battery`, quantity: b.quantity, unitPrice, total: unitPrice * b.quantity, category: "hardware" }); }
+      for (const p of pkg.panels) { const unitPrice = getPanelPrice(p.watts); items.push({ description: `${p.brand} ${p.watts}W Monocrystalline Solar Panel`, quantity: p.quantity, unitPrice, total: unitPrice * p.quantity, category: "hardware" }); }
+      const hardwareSub = items.reduce((s, i) => s + i.total, 0); const bos = Math.round(hardwareSub * 0.08); items.push({ description: "Balance of System (MC4 connectors, breakers, cables, racking)", quantity: 1, unitPrice: bos, total: bos, category: "hardware" });
+      items.push({ description: "NAESCO-Certified Professional Installation", quantity: 1, unitPrice: safeInstFee, total: safeInstFee, category: "installation" });
     }
 
     const totalPriceNGN = items.reduce((s, i) => s + i.total, 0);
-    const monthly = Math.ceil((totalPriceNGN * 0.03 * Math.pow(1.03, 36)) / (Math.pow(1.03, 36) - 1));
+    const monthlyPaymentOption = Math.ceil((totalPriceNGN * 0.03 * Math.pow(1.03, 36)) / (Math.pow(1.03, 36) - 1));
 
+    // ─── CAPACITY METRICS & RUNTIME ────────────────────────────
     const usableWh = getUsableWh(pkg.batteries);
     const dod = getBatteryDOD(pkg.batteries);
     const { wh: grossWh } = computeBankCapacity(pkg.batteries);
-    const panW = (pkg.panels ?? []).reduce((s, p) => s + p.watts * p.quantity, 0);
-    const avgGenWh = panW * psh.avg * SYSTEM_DERATE.combined;
 
-    // TRUE NIGHT RUNTIME (battery ÷ night load)
+    const totalPanelWatts = (pkg.panels || []).reduce((sum, p) => sum + p.watts * p.quantity, 0);
+    const avgDailyGenWh    = totalPanelWatts * pshRecord.avg   * SYSTEM_DERATE.combined;
+    const rainyDailyGenWh  = totalPanelWatts * pshRecord.rainy * SYSTEM_DERATE.combined;
+    const dryDailyGenWh    = totalPanelWatts * pshRecord.dry   * SYSTEM_DERATE.combined;
+
+    // TRUE NIGHT RUNTIME (battery ÷ computed night load)
     const nightRuntimeHrs = usableWh / nightLoadW;
     const estimatedRuntimeRange = `${Math.max(1, Math.floor(nightRuntimeHrs * 0.80))}–${Math.ceil(nightRuntimeHrs * 1.15)}`;
     
@@ -285,27 +381,49 @@ export function buildQuoteOptions(profile: LoadProfile, extraction: AIExtraction
     let backupCapacityDays = `~${rawBackupDays.toFixed(1)} days`;
     if (rawBackupDays < 1.0) backupCapacityDays += " (cannot handle 1 full cloudy day)";
     else if (rawBackupDays > 1.5) backupCapacityDays += " (resilient)";
+    else backupCapacityDays += " (standard overnight coverage)";
 
     const acRuntimeHours: number | null = acEffectiveW > 0 ? Math.round((usableWh / acEffectiveW) * 10) / 10 : null;
 
-    const sb: ScoreBreakdown = {
-      load: Math.round(scoreLoadCoverage(pkg.inverter.kva, profile.continuousLoad)),
-      battery: Math.round(scoreBatteryAutonomy(usableWh, profile.dailyEnergyWh)),
-      solar: Math.round(scoreSolarCoverage(avgGenWh, profile.dailyEnergyWh, isPortable)),
-      surge: Math.round(scoreSurgeHeadroom(pkg.maxSurgeWatts, profile.surgeLoad)),
-      quality: Math.round(scoreBatteryQuality(pkg.batteries)),
+    // ─── SCORING ───────────────────────────────────────────────
+    const loadScore    = scoreLoadCoverage(pkg.inverter.kva, profile.continuousLoad);
+    const batteryScore = scoreBatteryAutonomy(usableWh, profile.dailyEnergyWh);
+    const solarScore   = scoreSolarCoverage(avgDailyGenWh, profile.dailyEnergyWh, isPortable);
+    const surgeScore   = scoreSurgeHeadroom(pkg.maxSurgeWatts, profile.surgeLoad);
+    const qualityScore = scoreBatteryQuality(pkg.batteries);
+
+    const scoreBreakdown: ScoreBreakdown = {
+      load: Math.round(loadScore), battery: Math.round(batteryScore), solar: Math.round(solarScore), surge: Math.round(surgeScore), environment: Math.round(qualityScore)
     };
     
-    const reliabilityScore = computeReliability(sb, acRuntimeHours);
+    const reliabilityScore = computeReliability(scoreBreakdown, acRuntimeHours);
 
     let systemLimitedBy = "Optimally Balanced";
     if (reliabilityScore < 85) {
-      if (sb.battery <= sb.solar && sb.battery <= sb.surge) systemLimitedBy = "Battery Capacity";
-      else if (sb.solar < sb.battery && sb.solar <= sb.surge) systemLimitedBy = "Solar Generation";
+      if (scoreBreakdown.battery <= scoreBreakdown.solar && scoreBreakdown.battery <= scoreBreakdown.surge) systemLimitedBy = "Battery Capacity";
+      else if (scoreBreakdown.solar < scoreBreakdown.battery && scoreBreakdown.solar <= scoreBreakdown.surge) systemLimitedBy = "Solar Generation";
       else systemLimitedBy = "Inverter Peak Limit";
     }
 
-    // AC COMPATIBILITY ENGINE
+    // ─── SEASONAL ANALYSIS ─────────────────────────────────────
+    const rainySolarScore = scoreSolarCoverage(rainyDailyGenWh, profile.dailyEnergyWh, isPortable);
+    const drySolarScore   = scoreSolarCoverage(dryDailyGenWh,   profile.dailyEnergyWh, isPortable);
+    const seasonalAnalysis: SeasonalAnalysis = {
+      drySeasonReliability:   computeReliability({ ...scoreBreakdown, solar: Math.round(drySolarScore) }, acRuntimeHours),
+      rainySeasonReliability: computeReliability({ ...scoreBreakdown, solar: Math.round(rainySolarScore) }, acRuntimeHours),
+      worstCasePSH:           pshRecord.rainy,
+      worstCaseDailyGenWh:    Math.round(rainyDailyGenWh),
+    };
+
+    const rainyDrop = reliabilityScore - seasonalAnalysis.rainySeasonReliability;
+    if (!isPortable && rainyDrop > 12) {
+      extraction.warnings.push(
+        `⛈️ SEASONAL GAP [${pkg.name}]: Reliability drops from ${reliabilityScore}% (avg) ` +
+        `to ~${seasonalAnalysis.rainySeasonReliability}% in rainy season. Consider panels or battery upgrades.`
+      );
+    }
+
+    // ─── AC COMPATIBILITY ENGINE ─────────────────────────────
     let acCompatibilityText = "❄️ No ACs detected in load.";
     if (acRuntimeHours !== null) {
       if (acRuntimeHours >= 10.0) acCompatibilityText = `❄️ AC Supported: Full overnight runtime (~${acRuntimeHours.toFixed(1)} hrs capacity)`;
@@ -313,17 +431,17 @@ export function buildQuoteOptions(profile: LoadProfile, extraction: AIExtraction
       else acCompatibilityText = `❌ AC Not Recommended: Battery will drain rapidly (< 4 hrs capacity)`;
     }
 
-    // HONEST COPYWRITING
+    // ─── HONEST COPYWRITING ───────────────────────────────────
     let consequenceText: string; let realityCheckText: string; let bestForText: string; let notIdealForText: string;
 
     if (reliabilityScore >= 82) {
       consequenceText = "Strong autonomy. Handles consecutive cloudy days reliably.";
       realityCheckText = acRuntimeHours !== null && acRuntimeHours < 8.0 
         ? "⚠️ Limited AC Runtime. Other appliances run perfectly, but AC must be managed." 
-        : "Supports overnight AC usage depending on runtime and battery state.";
+        : "Supports limited AC usage depending on runtime and battery state.";
       bestForText = "24/7 off-grid independence";
       notIdealForText = "Budget-constrained rapid setups";
-    } else if (reliabilityScore >= 60) {
+    } else if (reliabilityScore >= 65) {
       consequenceText = "Reliable for standard daily cycles, vulnerable to extended bad weather.";
       realityCheckText = "Heavy appliances may drain the system if run simultaneously at night.";
       bestForText = "Standard household daily backup";
@@ -335,40 +453,94 @@ export function buildQuoteOptions(profile: LoadProfile, extraction: AIExtraction
       notIdealForText = "Overnight operation of freezers or ACs";
     }
 
-    const upgrades: UpgradeProjection[] = [];
+    // ─── UPGRADE PROJECTIONS ───────────────────────────────────
+    const upgradeProjections: UpgradeProjection[] = [];
     if (!isPortable && reliabilityScore < 90) {
+      
+      const newPanelWatts = totalPanelWatts + 800;
+      const newGenWh      = newPanelWatts * pshRecord.avg * SYSTEM_DERATE.combined;
+      const newSolarScore = scoreSolarCoverage(newGenWh, profile.dailyEnergyWh, false);
+      const panelRel      = computeReliability({ ...scoreBreakdown, solar: Math.round(newSolarScore) }, acRuntimeHours);
+      
       const { addedWh, upgradeLabel } = computeUpgradeStringWh(pkg.batteries);
+      let battRel = reliabilityScore;
+      
       if (addedWh > 0) {
-        const newUWh = (grossWh + addedWh) * dod * 0.92;
-        const bRel = computeReliability({ ...sb, battery: Math.round(scoreBatteryAutonomy(newUWh, profile.dailyEnergyWh)) }, acRuntimeHours !== null ? (newUWh/acEffectiveW) : null);
-        if (bRel > reliabilityScore + 2) upgrades.push({ action: upgradeLabel, projectedScore: bRel, icon: "🔋", reasoning: "Fixes overnight performance" });
+        const newUsableWh  = (grossWh + addedWh) * dod * 0.92;
+        const newBattScore = scoreBatteryAutonomy(newUsableWh, profile.dailyEnergyWh);
+        battRel = computeReliability({ ...scoreBreakdown, battery: Math.round(newBattScore) }, acRuntimeHours !== null ? (newUsableWh/acEffectiveW) : null);
+        
+        if (battRel > reliabilityScore + 2) {
+          upgradeProjections.push({ icon: "🔋", action: upgradeLabel, projectedScore: battRel, reasoning: "Fixes overnight performance immediately" } as any);
+        }
+      }
+      
+      if (panelRel > reliabilityScore + 2) {
+          upgradeProjections.push({ icon: "☀️", action: "+2 panels", projectedScore: panelRel, reasoning: scoreBreakdown.battery < 80 ? "Improves charging but still battery-limited" : "Accelerates daily system recovery" } as any);
+      }
+      
+      if (battRel > reliabilityScore && panelRel > reliabilityScore) {
+          const comboRelScore = computeReliability({ ...scoreBreakdown, battery: Math.round(scoreBatteryAutonomy((grossWh + addedWh) * dod * 0.92, profile.dailyEnergyWh)), solar: Math.round(newSolarScore) }, acRuntimeHours !== null ? (((grossWh + addedWh) * dod * 0.92)/acEffectiveW) : null);
+          upgradeProjections.push({ icon: "🚀", action: `+1 battery string & 2 panels`, projectedScore: Math.min(100, comboRelScore), reasoning: "Full stability, handles cloudy days" } as any);
       }
     }
 
     return {
-      tierLabel: uniq.length === 1 ? "🟡 Conditionally Reliable" : assignTierLabel(reliabilityScore, index, 0) as any,
+      tierLabel: uniqueOptions.length === 1 ? "🟡 Conditionally Reliable" as any : assignTierLabel(reliabilityScore, index, 0),
       package: pkg,
       lineItems: items,
       totalPriceNGN,
-      monthlyPaymentOption: monthly,
+      monthlyPaymentOption,
       estimatedRuntimeRange,
       backupCapacityDays,
       reliabilityScore,
-      scoreBreakdown: sb,
+      scoreBreakdown,
       systemLimitedBy,
       consequenceText,
       realityCheckText,
       acCompatibilityText,
       bestForText,
       notIdealForText,
-      upgradeProjections: upgrades,
-    };
+      upgradeProjections,
+      seasonalAnalysis,
+      batteryUsableWh: Math.round(usableWh),
+      batteryDOD: dod,
+      systemDerateFactors: SYSTEM_DERATE,
+      diversityFactor: profile.diversityFactor ?? 1.0,
+    } as any;
   });
 }
 
-export function buildQuoteResult(extraction: AIExtractionResult, location = "Lagos"): QuoteResult {
+// ─── 3: ASSEMBLE FINAL QUOTE ─────────────────────────────────
+export function buildQuoteResult(
+  extraction: AIExtractionResult,
+  location: string = "Lagos"
+): QuoteResult {
   const profile = computeLoadProfile(extraction, location);
+
+  if (profile.dailyEnergyWh > 2000) {
+    extraction.warnings.push(
+      `🌡️ HIGH-DEMAND SYSTEM: Your calibrated daily demand is ${(profile.dailyEnergyWh / 1000).toFixed(1)} kWh. ` +
+      `This includes the Nigeria heat penalty on cooling/refrigeration loads only — not a blanket 30% uplift on everything.`
+    );
+  }
+
   const options = buildQuoteOptions(profile, extraction, location);
-  const installers = options.length > 0 && (options[0].package?.installationFee ?? 0) > 0 ? getInstallersByLocation(location, 3) : [];
-  return { success: true, requestId: `P24-${nanoid(8).toUpperCase()}`, generatedAt: new Date().toISOString(), appliances: extraction.appliances, loadProfile: profile, options, warnings: extraction.warnings, engineersVerdict: extraction.engineersVerdict, confidenceScore: extraction.confidenceScore, recommendedInstallers: installers };
+  const installers =
+    options.length > 0 && (options[0].package?.installationFee ?? 0) > 0
+      ? getInstallersByLocation(location, 3)
+      : [];
+
+  return {
+    success: true,
+    requestId: `P24-${nanoid(8).toUpperCase()}`,
+    generatedAt: new Date().toISOString(),
+    appliances: extraction.appliances,
+    loadProfile: profile,
+    options,
+    warnings: extraction.warnings,
+    engineersVerdict: extraction.engineersVerdict,
+    confidenceScore: extraction.confidenceScore,
+    recommendedInstallers: installers,
+  };
 }
