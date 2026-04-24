@@ -22,7 +22,6 @@ type TierColors = { bg: string; accent: string; badge: string };
 type TabKey = "overview" | "specs" | "pricing" | "installers";
 
 // ─── TIER COLOR MAP ───────────────────────────────────────────
-// Keyed by package slug — independent of tier label naming changes.
 const TIER_COLORS: Record<string, TierColors> = {
   "lumos-l1":            { bg: "bg-white",        accent: "text-[#008751]",  badge: "bg-green-50 text-[#008751] border-green-200"    },
   "ecoflow-river-2":     { bg: "bg-white",        accent: "text-[#008751]",  badge: "bg-green-50 text-[#008751] border-green-200"    },
@@ -42,8 +41,7 @@ const DEFAULT_COLORS: TierColors = {
 const formatNGN = (amount?: number): string =>
   amount ? `₦${amount.toLocaleString("en-NG")}` : "₦0";
 
-// Discloses the real cost of the 3%-monthly financing plan.
-const INSTALLMENT_APR_PCT = ((Math.pow(1.03, 12) - 1) * 100).toFixed(1); // ≈ 42.6%
+const INSTALLMENT_APR_PCT = ((Math.pow(1.03, 12) - 1) * 100).toFixed(1);
 
 // ─── MAIN COMPONENT ──────────────────────────────────────────
 export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
@@ -64,57 +62,45 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
   };
 
   const seasonal    = currentOption.seasonalAnalysis;
-  const seasonalGap = seasonal
-    ? seasonal.drySeasonReliability - seasonal.rainySeasonReliability
-    : 0;
-  // Only surface the seasonal warning when rainy reliability is genuinely poor.
-  // A 10-point gap at 88% rainy reliability is fine. We care about < 70%.
-  const showSeasonalWarning =
-    !!seasonal && seasonalGap > 5 && seasonal.rainySeasonReliability < 70;
+  const seasonalGap = seasonal ? seasonal.drySeasonReliability - seasonal.rainySeasonReliability : 0;
+  const showSeasonalWarning = !!seasonal && seasonalGap > 5 && seasonal.rainySeasonReliability < 70;
 
   return (
     <div
       className={`w-full rounded-2xl ${colors.bg} border border-slate-200 overflow-hidden shadow-[0_20px_60px_-15px_rgba(0,135,81,0.15)] font-sans transition-colors duration-300`}
     >
-      {/* ─── Package Selector Pills ─────────────────────────── */}
-      {quote.options.length > 1 && (
-        <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-2">
-          {quote.options.map((opt, idx) => (
-            <button
-              key={idx}
-              onClick={() => { setSelectedOptionIdx(idx); setActiveTab("overview"); }}
-              className={`px-4 py-2 text-xs font-bold rounded-full transition-all border ${
-                selectedOptionIdx === idx
-                  ? "bg-slate-900 text-white border-slate-900 shadow-md"
-                  : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"
-              }`}
-            >
-              {opt.tierLabel}
-              {/* v4.0: over-provisioning dot on the pill selector */}
-              {opt.isOverProvisioned && (
-                <span
-                  className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle"
-                  title={`${opt.overProvisioningRatio}× your current demand`}
-                />
-              )}
-            </button>
-          ))}
-        </div>
-      )}
+      <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-wrap gap-2">
+        {quote.options.map((opt, idx) => (
+          <button
+            key={idx}
+            onClick={() => { setSelectedOptionIdx(idx); setActiveTab("overview"); }}
+            className={`px-4 py-2 text-xs font-bold rounded-full transition-all border ${
+              selectedOptionIdx === idx
+                ? "bg-slate-900 text-white border-slate-900 shadow-md"
+                : "bg-white text-slate-500 border-slate-200 hover:border-slate-400"
+            }`}
+          >
+            {opt.tierLabel}
+            {opt.isOverProvisioned && (
+              <span
+                className="ml-1.5 inline-block w-1.5 h-1.5 rounded-full bg-amber-400 align-middle"
+                title={`${opt.overProvisioningRatio}× your current demand`}
+              />
+            )}
+          </button>
+        ))}
+      </div>
 
-      {/* ─── Header ─────────────────────────────────────────── */}
       <div className="relative px-6 pt-6 pb-5 border-b border-slate-200 bg-white">
         <div className="relative flex items-start justify-between gap-4">
           <div>
-            {/* Tier badge — v4.0: shows over-provisioning tag inline */}
             <div className="flex flex-wrap items-center gap-2 mb-3">
               <div
                 className={`inline-flex items-center gap-2 px-3 py-1 rounded-full border text-xs font-mono font-bold ${colors.badge}`}
               >
                 <span className="w-1.5 h-1.5 rounded-full bg-current animate-pulse" />
-                {currentOption.tierLabel.replace(/[🟢🟡🔵]/g, "").trim()}
+                {currentOption.tierLabel.replace(/[🟢🟡🔵🟠]/g, "").trim()}
               </div>
-              {/* v4.0 OVER-PROVISIONING BADGE */}
               {currentOption.isOverProvisioned && (
                 <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-amber-50 border border-amber-200 text-xs font-bold text-amber-700">
                   ⚡ {currentOption.overProvisioningRatio}× demand
@@ -144,7 +130,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
           </div>
         </div>
 
-        {/* ─── Reliability Score ─────────────────────────────── */}
         <div className="mt-5 p-4 rounded-xl border border-slate-100 bg-slate-50">
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm font-black text-slate-700">System Reliability</span>
@@ -172,7 +157,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
             />
           </div>
 
-          {/* Score breakdown — uses `quality` key (renamed from `environment` in v3.0) */}
           <div className="grid grid-cols-5 gap-1.5 text-center mt-4 pt-4 border-t border-slate-200">
             {(["load", "battery", "solar", "surge", "quality"] as const).map((key, i) => {
               const labels = ["Load", "Battery", "Solar", "Surge", "Quality"];
@@ -190,10 +174,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
           </div>
         </div>
 
-        {/* ─── v4.0: AC RUNTIME CALLOUT ──────────────────────────
-            Shown only when cooling appliances are in the load.
-            This directly corrects the v3 bug of claiming "ACs run overnight"
-            without checking whether battery capacity actually supports it.    */}
         {currentOption.acRuntimeHours !== null && currentOption.acRuntimeHours !== undefined && (
           <AcRuntimeCallout
             acRuntimeHours={currentOption.acRuntimeHours}
@@ -201,7 +181,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
           />
         )}
 
-        {/* ─── Seasonal Performance ──────────────────────────── */}
         {showSeasonalWarning && seasonal && (
           <div className="mt-3 p-4 rounded-xl border border-amber-200 bg-amber-50">
             <div className="flex items-center justify-between mb-3">
@@ -228,12 +207,11 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
             </div>
             <p className="text-xs text-amber-700 mt-2.5 font-medium">
               ⚠️ Rainy season yield drops to ~{seasonal.worstCaseDailyGenWh.toLocaleString()} Wh/day
-              ({seasonal.worstCasePSH} PSH). Adding 2 extra panels closes this gap year-round.
+              ({seasonal.worstCasePSH} PSH). Adding panels closes this gap.
             </p>
           </div>
         )}
 
-        {/* ─── Consequence & Best For ────────────────────────── */}
         <div className="mt-3 p-4 rounded-xl bg-slate-50 border border-slate-200 flex flex-col gap-3">
           <div>
             <p className="text-xs font-black text-slate-500 uppercase tracking-wider mb-1">⚠️ What This Means</p>
@@ -250,7 +228,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
           </div>
         </div>
 
-        {/* ─── Reality Check & Upgrade Path ──────────────────── */}
         <div className="mt-3 p-4 rounded-xl bg-blue-50 border border-blue-100 flex flex-col gap-2">
           <div className="flex items-start gap-2">
             <span className="text-base shrink-0">🧠</span>
@@ -267,7 +244,7 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
                 <div className="mt-1 space-y-1">
                   {currentOption.upgradeProjections.map((proj, i) => (
                     <p key={i} className="text-sm text-blue-800 font-bold bg-blue-100/50 px-2 py-1 rounded w-full">
-                      📈 With {proj.action} → ~{proj.projectedScore}% reliability
+                      {proj.icon} {proj.action} → ~{proj.projectedScore}% reliability
                     </p>
                   ))}
                 </div>
@@ -277,7 +254,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         </div>
       </div>
 
-      {/* ─── Tab Bar ────────────────────────────────────────── */}
       <div className="flex border-b border-slate-200 bg-white">
         {(["overview", "specs", "pricing", "installers"] as const).map((tab) => (
           <button
@@ -294,7 +270,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         ))}
       </div>
 
-      {/* ─── Tab Content ────────────────────────────────────── */}
       <div className="p-6">
         {activeTab === "overview"   && <OverviewTab   quote={quote} currentOption={currentOption} colors={colors} />}
         {activeTab === "specs"      && <SpecsTab      quote={quote} currentOption={currentOption} colors={colors} />}
@@ -302,7 +277,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         {activeTab === "installers" && <InstallersTab quote={quote} colors={colors} />}
       </div>
 
-      {/* ─── Footer CTA ─────────────────────────────────────── */}
       <div className="px-6 pb-6 pt-2 bg-white flex flex-col sm:flex-row gap-3">
         <button
           className="flex-1 py-3.5 rounded-xl font-bold text-sm tracking-wide bg-[#008751] hover:bg-[#00683e] text-white transition-all active:scale-[0.98] shadow-md shadow-[#008751]/20"
@@ -318,7 +292,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         </button>
       </div>
 
-      {/* ─── Engineering Warnings ───────────────────────────── */}
       {quote.warnings?.length > 0 && (
         <div className="mx-6 mb-6 p-4 rounded-xl bg-orange-50 border border-orange-100">
           <p className="text-xs font-bold text-orange-600 mb-2 uppercase tracking-wider">⚠ Engineering Notes</p>
@@ -332,7 +305,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
         </div>
       )}
 
-      {/* ─── Footer Meta ────────────────────────────────────── */}
       <div className="px-6 pb-4 flex items-center justify-between bg-slate-50/50 pt-4 border-t border-slate-100">
         <span className="text-xs text-slate-400 font-mono font-medium">
           Generated {quote.generatedAt ? new Date(quote.generatedAt).toLocaleString("en-NG") : "Just now"}
@@ -348,10 +320,6 @@ export default function QuoteCard({ quote, onReset }: QuoteCardProps) {
   );
 }
 
-// ─── v4.0 NEW: AC RUNTIME CALLOUT ────────────────────────────
-// Shown whenever cooling appliances are in the load.
-// Replaces the old implicit "ACs work overnight at reliability ≥ 85%" claim
-// with a number the customer can actually evaluate.
 interface AcRuntimeCalloutProps {
   acRuntimeHours: number;
   overProvisioningRatio: number;
@@ -400,9 +368,16 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
     (s: number, p: PanelSpec) => s + p.watts * p.quantity, 0
   );
 
-  const stats = [
-    { label: "Night Runtime",   value: `~${currentOption.estimatedRuntimeRange} hrs`, icon: "🕒" },
-    { label: "Backup Autonomy", value: `~${currentOption.backupCapacityDays} days`,   icon: "🔋" },
+  const stats: any[] = [
+    { label: "Night Runtime (Light)", value: `~${currentOption.estimatedRuntimeLight || currentOption.estimatedRuntimeRange} hrs`, icon: "🌙" },
+  ];
+
+  if (currentOption.estimatedRuntimeHeavy) {
+    stats.push({ label: "Night Runtime (+AC)", value: `~${currentOption.estimatedRuntimeHeavy} hrs`, icon: "❄️" });
+  }
+
+  stats.push(
+    { label: "Backup Autonomy", value: currentOption.backupCapacityDays, icon: "🔋" },
     {
       label: "Usable Battery",
       value: currentOption.batteryUsableWh
@@ -410,10 +385,9 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         : "—",
       icon: "⚡",
     },
-    { label: "Inverter",    value: `${pkg.inverter.kva} KVA`,                                          icon: "🔌" },
-    { label: "Panel Array", value: totalPanelWatts > 0 ? `${totalPanelWatts}W` : "No panels",         icon: "☀️" },
-    { label: "Daily Demand",value: `${(profile.dailyEnergyWh / 1000).toFixed(1)} kWh`,                icon: "📊" },
-  ];
+    { label: "Panel Array", value: totalPanelWatts > 0 ? `${totalPanelWatts}W` : "No panels", icon: "☀️" },
+    { label: "Daily Demand", value: `${(profile.dailyEnergyWh / 1000).toFixed(1)} kWh`, icon: "📊" }
+  );
 
   return (
     <div className="space-y-6">
@@ -427,7 +401,6 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         ))}
       </div>
 
-      {/* Battery chemistry callout */}
       {currentOption.batteryDOD != null && (
         <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-xs text-slate-500 font-medium">
           <span className="font-black text-slate-700">Battery chemistry: </span>
@@ -440,7 +413,6 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         </div>
       )}
 
-      {/* Includes list */}
       <div>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">What's Included</h3>
         <ul className="space-y-2.5">
@@ -481,7 +453,6 @@ function SpecsTab({ quote, currentOption, colors }: TabProps) {
         </SpecSection>
       ))}
 
-      {/* v4.0: AC runtime in specs for transparency */}
       {currentOption.acRuntimeHours !== null && currentOption.acRuntimeHours !== undefined && (
         <SpecSection title="❄️ AC Runtime Analysis" color={colors.accent}>
           <SpecRow label="AC-only battery runtime" value={`~${currentOption.acRuntimeHours.toFixed(1)} hrs`} />
@@ -521,7 +492,6 @@ function SpecsTab({ quote, currentOption, colors }: TabProps) {
   );
 }
 
-// ─── Spec helpers ────────────────────────────────────────────
 interface SpecSectionProps { title: string; color: string; children: React.ReactNode }
 function SpecSection({ title, color, children }: SpecSectionProps) {
   return (
