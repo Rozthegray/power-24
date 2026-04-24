@@ -1,5 +1,5 @@
 // ============================================================
-// lib/types/index.ts  v3.5 (Unified Engine Updates)
+// lib/types/index.ts  v3.6 (Actionable Reliability Updates)
 // Central type registry for Power 24.
 // ============================================================
 
@@ -17,7 +17,6 @@ export interface DetectedAppliance {
   hasSurge: boolean;
   surgeMultiplier: number;
   category: ApplianceCategory;
-  // Unified Engine Updates:
   dutyCycle?: number; 
   isNightLoad?: boolean;
 }
@@ -155,6 +154,7 @@ export interface RankedPackage {
   scoreBreakdown: ScoreBreakdown;
   consequenceText: string;
   realityCheckText: string;
+  reliabilityActionableText: string; // NEW FIELD for hard truths
   bestForText: string;
   notIdealForText: string;
   upgradeProjections: UpgradeProjection[];
