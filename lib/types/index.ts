@@ -107,34 +107,10 @@ export interface BatterySpec {
   model: string;
   /**
    * Battery chemistry type.
-   *
-   * "tubular"   — tubular-plate lead-acid; dominant in Nigerian installs.
-   * Better partial-SoC tolerance and cycle life than flat-plate
-   * lead-acid. DoD: 50%. Typical cycle life: 500–800 cycles.
-   * "gel"       — VRLA gel; sealed, maintenance-free. DoD: 50%.
-   * Typical cycle life: 300–500 cycles.
-   * "lead-acid" — standard flat-plate flooded lead-acid. DoD: 50%.
-   * Typical cycle life: 200–350 cycles. Cheapest upfront.
-   * "lithium"   — LiFePO4 rack batteries. DoD: 80%, protected by BMS.
-   * Typical cycle life: 3,000–6,000 cycles.
    */
   type: "lithium" | "lead-acid" | "gel" | "tubular";
   /**
    * Physical wiring topology of this battery spec within the bank.
-   *
-   * "series"   — units are wired in series to increase system voltage.
-   * Ah capacity stays at a single unit's rating;
-   * voltage = voltageV × quantity.
-   * Example: 2 × 12V/200Ah in series → 24V/200Ah bank.
-   *
-   * "parallel" — units are wired in parallel to increase capacity.
-   * Voltage stays at a single unit's rating;
-   * Ah = capacityAh × quantity.
-   * Example: 2 × 48V/100Ah in parallel → 48V/200Ah bank.
-   *
-   * If omitted, the engine falls back to a voltage heuristic:
-   * voltageV ≥ 48V → parallel; voltageV < 48V → series.
-   * Explicitly setting this field is strongly recommended for new packages.
    */
   wiring?: "series" | "parallel";
   voltageV: number;
@@ -166,8 +142,6 @@ export interface ScoreBreakdown {
   surge: number;
   /**
    * Battery quality score: chemistry type + cycle life rating.
-   * Formerly named "environment" in v2.0 — renamed for clarity.
-   * Higher is better: lithium > gel > tubular > lead-acid.
    */
   quality: number;
 }
@@ -181,40 +155,20 @@ export interface UpgradeProjection {
 
 // ─── SEASONAL ANALYSIS ───────────────────────────────────────
 
-/**
- * Seasonal reliability analysis.
- * Nigerian solar yield drops significantly during the rainy season
- * (April–October). This type exposes the performance gap so customers
- * know the worst-case they should expect, not just the annual average.
- */
 export interface SeasonalAnalysis {
-  /** Reliability score during dry season (Nov–Mar): best case */
   drySeasonReliability: number;
-  /** Reliability score during rainy season (Apr–Oct): worst case */
   rainySeasonReliability: number;
-  /** Rainy-season peak sun hours for this location */
   worstCasePSH: number;
-  /** Daily generation (Wh) under rainy-season conditions */
   worstCaseDailyGenWh: number;
 }
 
 // ─── SYSTEM DERATE BREAKDOWN ─────────────────────────────────
 
-/**
- * Explicit system derate breakdown.
- * Every solar installation loses efficiency between the panel and the load.
- * These are the standard engineering derates used by NABCEP-certified designers.
- */
 export interface SystemDerateBreakdown {
-  /** DC + AC wiring resistive losses (~3%) */
   wiring: number;
-  /** MPPT charge controller efficiency loss (~3%) */
   mppt: number;
-  /** Panel temperature derating at Nigerian ambient (~12%) */
   temperature: number;
-  /** Dust and soiling losses — Harmattan season (~5%) */
   soiling: number;
-  /** Combined product of all derates above (~0.787) */
   combined: number;
 }
 
@@ -226,7 +180,12 @@ export interface RankedPackage {
   lineItems: LineItem[];
   totalPriceNGN: number;
   monthlyPaymentOption: number;
-  estimatedRuntimeRange: string;
+  
+  // UNIFIED ENGINE UPDATES:
+  estimatedRuntimeRange: string; // Kept for fallback
+  estimatedRuntimeLight: string;
+  estimatedRuntimeHeavy: string | null;
+
   backupCapacityDays: string;
   reliabilityScore: number;
   scoreBreakdown: ScoreBreakdown;
@@ -235,15 +194,10 @@ export interface RankedPackage {
   bestForText: string;
   notIdealForText: string;
   upgradeProjections: UpgradeProjection[];
-  /** Dry vs. rainy season reliability comparison */
   seasonalAnalysis: SeasonalAnalysis;
-  /** Actual usable Wh after DoD and round-trip efficiency */
   batteryUsableWh: number;
-  /** Depth-of-discharge limit for this battery chemistry */
   batteryDOD: number;
-  /** Full system derate breakdown for engineering transparency */
   systemDerateFactors: SystemDerateBreakdown;
-  /** Diversity factor applied to concurrent load calculation */
   diversityFactor: number;
 
   // Added fields to support QuoteCard.tsx UI
