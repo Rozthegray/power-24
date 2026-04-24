@@ -401,6 +401,7 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         ))}
       </div>
 
+      {/* Battery chemistry callout */}
       {currentOption.batteryDOD != null && (
         <div className="rounded-xl bg-slate-50 border border-slate-100 p-4 text-xs text-slate-500 font-medium">
           <span className="font-black text-slate-700">Battery chemistry: </span>
@@ -413,6 +414,7 @@ function OverviewTab({ quote, currentOption, colors }: TabProps) {
         </div>
       )}
 
+      {/* Includes list */}
       <div>
         <h3 className="text-xs font-bold text-slate-400 uppercase tracking-wider mb-3">What's Included</h3>
         <ul className="space-y-2.5">
